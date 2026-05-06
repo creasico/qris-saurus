@@ -74,10 +74,114 @@ Untuk fase sekarang, fokus utama library ini adalah **transformasi lokal** dari 
 - Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, dan Duitku
 - Mudah di-import dari project Bun/TypeScript lain
 
+## How It Works
+
+QRIS mengikuti **EMVCo QR Code Specification** menggunakan encoding **TLV (Tag-Length-Value)**:
+
+```
+[Tag: 2 digit][Length: 2 digit][Value: variable]
+```
+
+Contoh annotasi payload nyata:
+
+```
+00020101021126360014ID.CO.QRIS.WWW0114GENERICSTORE01520458125303360
+│    │    │    │
+│    │    │    └─ 26: merchant account info (length 36)
+│    │    └─────── 01: initiation method (length 2, value "11" = static)
+│    └──────────── 00: format indicator  (length 2, value "01")
+│
+5802ID5911QRIS SAURUS6007JAKARTA63041669
+│         │           │         │
+│         │           │         └─ 63: CRC (length 4)
+│         │           └──────────── 60: city (length 7)
+│         └────────────────────────── 59: merchant name (length 11)
+└──────────────────────────────────────── 58: country code (length 2)
+```
+
+### Proses konversi static → dynamic
+
+Saat `staticToDynamic()` dipanggil, library melakukan:
+
+1. **Parse** — payload dipecah menjadi array TLV nodes
+2. **Validasi** — cek CRC dan tag `00` (format indicator) wajib ada
+3. **Ubah initiation method** — tag `01` dari `11` → `12`
+4. **Sisipkan amount** — tambahkan tag `54` dengan nilai amount
+5. **Sisipkan additional data** — tag `62` berisi sub-tag:
+   - `05` = merchant reference (bila ada)
+   - `07` = terminal label (bila ada)
+   - `08` = tip indicator (bila ada)
+6. **Hitung ulang CRC** — CRC16/CCITT atas seluruh payload kecuali 4 char terakhir
+7. **Serialize** — nodes dikembalikan ke string payload
+
+### Key QRIS Tags
+
+| Tag       | Nama                         | Contoh nilai              |
+| --------- | ---------------------------- | ------------------------- |
+| `00`      | Format indicator             | `01`                      |
+| `01`      | Initiation method            | `11` statis, `12` dinamis |
+| `26`–`51` | Merchant account info        | per provider              |
+| `52`      | Merchant category code (MCC) | `5812`                    |
+| `53`      | Currency code                | `360` (IDR)               |
+| `54`      | Transaction amount           | `25000.00`                |
+| `55`      | Tip or convenience indicator | `01` fixed, `02` percent  |
+| `56`      | Fixed convenience fee        | `1000.00`                 |
+| `57`      | Percentage convenience fee   | `2.00`                    |
+| `58`      | Country code                 | `ID`                      |
+| `59`      | Merchant name                | `QRIS SAURUS`             |
+| `60`      | Merchant city                | `JAKARTA`                 |
+| `62`      | Additional data field        | sub-tag `05`, `07`, `08`  |
+| `63`      | CRC                          | 4 char hex                |
+
 ## Install
 
 ```bash
 bun install
+```
+
+## Configure Environment
+
+Buat file `.env` dari template:
+
+```bash
+cp .env.example .env
+```
+
+`.env.example`:
+
+```env
+# Midtrans
+MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxxxxxxxxxx
+MIDTRANS_SANDBOX=true
+
+# Xendit
+XENDIT_SECRET_KEY=xnd_development_xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Duitku
+DUITKU_MERCHANT_CODE=Dxxxxx
+DUITKU_MERCHANT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DUITKU_SANDBOX=true
+```
+
+Gunakan dalam kode:
+
+```ts
+import { midtransAdapter, xenditAdapter, duitkuAdapter } from "qris-saurus";
+
+const midtransConfig = {
+  serverKey: process.env.MIDTRANS_SERVER_KEY!,
+  sandbox: process.env.MIDTRANS_SANDBOX === "true",
+};
+
+const xenditConfig = {
+  secretKey: process.env.XENDIT_SECRET_KEY!,
+};
+
+const duitkuConfig = {
+  merchantCode: process.env.DUITKU_MERCHANT_CODE!,
+  merchantKey: process.env.DUITKU_MERCHANT_KEY!,
+  sandbox: process.env.DUITKU_SANDBOX === "true",
+};
 ```
 
 ## Quick start
@@ -100,6 +204,48 @@ console.log(result.provider);
 console.log(validate(dynamicQris));
 ```
 
+## Error Handling
+
+Semua operasi core bersifat sinkron dan tidak throw — hasil validasi dikembalikan via `ValidationResult`. Gateway adapters menggunakan `async/await` dan dapat throw bila request gagal.
+
+```ts
+import { validate, makeDynamic, midtransAdapter } from "qris-saurus";
+
+// Core — tidak throw, cek .valid
+const check = validate(qrisString);
+if (!check.valid) {
+  console.error("Invalid QRIS:", check.errors);
+  // errors: ["Invalid CRC value", "Missing required tag 00", ...]
+}
+
+// Transform — tidak throw, tapi QRIS input harus valid
+const dynamic = makeDynamic(qrisString, { amount: 25000 });
+console.log(dynamic.source); // "local"
+
+// Gateway adapter — dapat throw, tangkap dengan try/catch
+try {
+  const result = await midtransAdapter.createDynamicQr(
+    { orderId: "INV-001", amount: 25000 },
+    midtransConfig,
+  );
+  console.log(result.qrisString);
+} catch (err) {
+  // Network error, auth error, atau response tidak valid
+  console.error("Gateway error:", err);
+}
+
+// Cek status pembayaran
+try {
+  const status = await midtransAdapter.checkPaymentStatus("INV-001", midtransConfig);
+  // status.status: "pending" | "paid" | "expired" | "failed" | "cancelled"
+  if (status.status === "paid") {
+    console.log("Lunas pada:", status.paidAt);
+  }
+} catch (err) {
+  console.error("Status check error:", err);
+}
+```
+
 ## CLI
 
 Setelah build, CLI tersedia sebagai `qris-saurus`.
@@ -110,67 +256,194 @@ Setelah build, CLI tersedia sebagai `qris-saurus`.
 bun run build
 ```
 
-### Validate payload
+### Help
+
+```bash
+bun run dist/cli.js --help
+```
+
+```
+qris-saurus CLI
+
+Usage:
+  qris-saurus validate [<qris>] [--input-file <file>]
+  qris-saurus parse [<qris>] [--input-file <file>]
+  qris-saurus detect [<qris>] [--input-file <file>]
+  qris-saurus dynamic [<qris>] --amount <number> [--merchant-ref <text>] [--terminal-label <text>] [--input-file <file>]
+  qris-saurus render [<qris>] --output <file.png> [--width <number>] [--margin <number>] [--input-file <file>]
+
+Input priority:
+  1. positional <qris>
+  2. --input-file <file>
+  3. stdin pipe
+```
+
+### validate
+
+Memeriksa CRC dan tag wajib pada payload.
 
 ```bash
 bun run dist/cli.js validate "<QRIS_PAYLOAD>"
-```
-
-```bash
+# atau
 bun run dist/cli.js validate --input-file ./payload.txt
 ```
 
-### Parse payload
+Output:
+
+```json
+{
+  "valid": true,
+  "errors": []
+}
+```
+
+Jika ada masalah:
+
+```json
+{
+  "valid": false,
+  "errors": [
+    "Invalid CRC value"
+  ]
+}
+```
+
+### parse
+
+Mem-parse payload menjadi struktur TLV.
 
 ```bash
 bun run dist/cli.js parse "<QRIS_PAYLOAD>"
-```
-
-```bash
+# atau
 cat ./payload.txt | bun run dist/cli.js parse
 ```
 
-### Detect provider
+Output:
+
+```json
+{
+  "raw": "00020101021126360014ID.CO.QRIS.WWW0114GENERICSTORE01520458125303360580 2ID5911QRIS SAURUS6007JAKARTA63041669",
+  "nodes": [
+    { "id": "00", "length": 2, "value": "01" },
+    { "id": "01", "length": 2, "value": "11" },
+    {
+      "id": "26",
+      "length": 36,
+      "value": "0014ID.CO.QRIS.WWW0114GENERICSTORE01",
+      "children": [
+        { "id": "00", "length": 14, "value": "ID.CO.QRIS.WWW" },
+        { "id": "01", "length": 14, "value": "GENERICSTORE01" }
+      ]
+    },
+    { "id": "52", "length": 4, "value": "5812" },
+    { "id": "53", "length": 3, "value": "360" },
+    { "id": "58", "length": 2, "value": "ID" },
+    { "id": "59", "length": 11, "value": "QRIS SAURUS" },
+    { "id": "60", "length": 7, "value": "JAKARTA" }
+  ],
+  "crc": "1669"
+}
+```
+
+### detect
+
+Mendeteksi provider dari merchant account identifier.
 
 ```bash
 bun run dist/cli.js detect "<QRIS_PAYLOAD>"
-```
-
-```bash
+# atau
 bun run dist/cli.js detect --input-file ./payload.txt
 ```
 
-### Convert static QRIS to dynamic QRIS
+Jika provider dikenali (contoh ShopeePay):
 
-```bash
-bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-001 --terminal-label POS-A
+```json
+{
+  "code": "shopeepay",
+  "name": "ShopeePay",
+  "aliases": ["shopeepay", "shopee pay"],
+  "merchantInfoTagIds": ["26", "27", "28", "..."],
+  "identifiers": ["shopee"],
+  "supportsApiDynamic": false,
+  "notes": "Standalone public dynamic QRIS API evidence is limited; use local QRIS transformation by default."
+}
 ```
 
-```bash
-cat ./payload.txt | bun run dist/cli.js dynamic --amount 12500 --merchant-ref INV-001
+Jika tidak dikenali:
+
+```json
+null
 ```
 
-Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
+### dynamic
 
-### Render QR image
+Mengubah QRIS statis menjadi dinamis dengan nominal transaksi.
+
+```bash
+bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 25000 --merchant-ref INV-001 --terminal-label POS-A
+# atau
+cat ./payload.txt | bun run dist/cli.js dynamic --amount 25000 --merchant-ref INV-001
+```
+
+Output adalah string payload QRIS dinamis baru, siap dirender:
+
+```
+00020101021226360014ID.CO.QRIS.WWW0114GENERICSTORE01520458125303360540825000.005802ID5911QRIS SAURUS6007JAKARTA62200507INV-0010705POS-A6304391F
+```
+
+Perbedaan dari payload asli:
+- tag `01` berubah dari `11` → `12` (static → dynamic)
+- tag `54` ditambahkan dengan nominal `25000.00`
+- tag `62` ditambahkan dengan `merchantRef` dan `terminalLabel`
+- tag `63` (CRC) dihitung ulang
+
+### render
+
+Membuat file PNG dari payload QRIS.
 
 ```bash
 bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --margin 2
-```
-
-```bash
+# atau
 cat ./payload.txt | bun run dist/cli.js render --output ./qris.png
 ```
 
-Command ini membuat file PNG dari payload QRIS.
+Output adalah path file PNG yang berhasil dibuat:
+
+```
+./qris.png
+```
 
 ## Rendering dari library
 
-```ts
-import { renderQrToDataUrl, renderQrToFile } from "qris-saurus";
+### Simpan ke file
 
-const dataUrl = await renderQrToDataUrl(qrisPayload);
-await renderQrToFile(qrisPayload, "./qris.png");
+```ts
+import { renderQrToFile } from "qris-saurus";
+
+await renderQrToFile(qrisPayload, "./qris.png", { width: 320, margin: 2 });
+// → file ./qris.png tersimpan
+```
+
+### Output sebagai Base64 data URL
+
+```ts
+import { renderQrToDataUrl } from "qris-saurus";
+
+const dataUrl = await renderQrToDataUrl(qrisPayload, { width: 320 });
+console.log(dataUrl);
+// data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAFACAYAAADNkKWqAAAAAklEQVR4Ae...
+```
+
+Hasil `dataUrl` langsung bisa dipakai di HTML:
+
+```html
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAFACAYAAADNkKWqAAAAAklEQVR4Ae..." />
+```
+
+Atau dikirim sebagai JSON response:
+
+```ts
+return Response.json({ qrImage: dataUrl });
 ```
 
 Helper ini berguna kalau kamu ingin:
@@ -180,35 +453,31 @@ Helper ini berguna kalau kamu ingin:
 
 ## Available API
 
-- `parse(qrisString)`
-- `serialize(qrisData)`
-- `validate(qrisString)`
-- `computeCrc(input)`
-- `verifyCrc(qrisString)`
-- `staticToDynamic(qrisString, options)`
-- `detectProvider(qrisString)`
-- `listProviders()`
-- `makeDynamic(qrisString, options)`
-- `renderQrToDataUrl(qrisString, options?)`
-- `renderQrToFile(qrisString, outputPath, options?)`
+**Core:**
+- `parse(qrisString)` — string → TLV nodes
+- `serialize(qrisData)` — TLV nodes → string
+- `validate(qrisString)` — cek CRC + tag wajib
+- `computeCrc(input)` / `verifyCrc(qrisString)`
 
-## Development
+**Transform:**
+- `staticToDynamic(qrisString, options)` — local transform, return string
+- `makeDynamic(qrisString, options)` — local transform + provider detection, return `DynamicResult`
 
-```bash
-bun install
-bun test
-bun run typecheck
-bun run build
-```
+**Providers:**
+- `detectProvider(qrisString)` — return `ProviderAdapter | null`
+- `listProviders()` — return semua provider terdaftar
 
-## Documentation
+**Gateway adapters:**
+- `midtransAdapter.createDynamicQr(options, config)` — buat QR via Midtrans API
+- `midtransAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran
+- `xenditAdapter.createDynamicQr(options, config)` — buat QR via Xendit API
+- `xenditAdapter.checkPaymentStatus(gatewayOrderId, config)` — cek status pembayaran
+- `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku API
+- `duitkuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran
 
-Lihat folder [`docs`](./docs):
-
-- [`docs/architecture.md`](./docs/architecture.md)
-- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
-- [`docs/providers.md`](./docs/providers.md)
-- [`docs/cli.md`](./docs/cli.md)
+**Render:**
+- `renderQrToDataUrl(qrisString, options?)` — return Base64 PNG data URL
+- `renderQrToFile(qrisString, outputPath, options?)` — simpan ke file PNG
 
 ## CLI input priority
 
@@ -217,18 +486,15 @@ CLI menerima input dengan urutan prioritas:
 2. `--input-file <file>`
 3. stdin / pipe
 
-Ini membuat flow seperti berikut jadi bisa dipakai:
-
 ```bash
-cat payload.txt | qris-saurus render --output qris.png
-```
+# 1 — argumen langsung
+bun run dist/cli.js validate "00020101021126..."
 
-```bash
-qris-saurus dynamic --input-file payload.txt --amount 25000
-```
+# 2 — dari file
+bun run dist/cli.js dynamic --input-file payload.txt --amount 25000
 
-```bash
-qris-saurus validate "<QRIS_PAYLOAD>"
+# 3 — dari stdin / pipe
+cat payload.txt | bun run dist/cli.js render --output qris.png
 ```
 
 ## Development
@@ -244,79 +510,13 @@ bun run build
 
 Lihat folder [`docs`](./docs):
 
-- [`docs/architecture.md`](./docs/architecture.md)
-- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
-- [`docs/providers.md`](./docs/providers.md)
-- [`docs/cli.md`](./docs/cli.md)
+- [`docs/sdk/index.md`](./docs/sdk/index.md) — overview SDK & quick start
+- [`docs/sdk/api.md`](./docs/sdk/api.md) — full API reference
+- [`docs/sdk/workflow.md`](./docs/sdk/workflow.md) — panduan alur end-to-end
+- [`docs/sdk/gateway.md`](./docs/sdk/gateway.md) — gateway adapters & cek status pembayaran
+- [`docs/architecture.md`](./docs/architecture.md) — desain internal library
+- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md) — teknis QRIS dinamis & TLV
+- [`docs/providers.md`](./docs/providers.md) — catatan per provider
+- [`docs/cli.md`](./docs/cli.md) — panduan CLI lengkap
 
-## Development
 
-Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
-
-### Render QR image
-
-```bash
-bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --margin 2
-```
-
-Command ini membuat file PNG dari payload QRIS.
-
-## Rendering dari library
-
-```ts
-import { renderQrToDataUrl, renderQrToFile } from "qris-saurus";
-
-const dataUrl = await renderQrToDataUrl(qrisPayload);
-await renderQrToFile(qrisPayload, "./qris.png");
-```
-
-Helper ini berguna kalau kamu ingin:
-- menampilkan preview QR di web/app internal
-- menyimpan QR image ke file
-- mengirim hasil render ke pipeline lain setelah payload selesai dibentuk
-
-## Available API
-
-- `parse(qrisString)`
-- `serialize(qrisData)`
-- `validate(qrisString)`
-- `computeCrc(input)`
-- `verifyCrc(qrisString)`
-- `staticToDynamic(qrisString, options)`
-- `detectProvider(qrisString)`
-- `listProviders()`
-- `makeDynamic(qrisString, options)`
-- `renderQrToDataUrl(qrisString, options?)`
-- `renderQrToFile(qrisString, outputPath, options?)`
-
-## Development
-
-## Available API
-
-- `parse(qrisString)`
-- `serialize(qrisData)`
-- `validate(qrisString)`
-- `computeCrc(input)`
-- `verifyCrc(qrisString)`
-- `staticToDynamic(qrisString, options)`
-- `detectProvider(qrisString)`
-- `listProviders()`
-- `makeDynamic(qrisString, options)`
-
-## Development
-
-```bash
-bun install
-bun test
-bun run typecheck
-bun run build
-```
-
-## Documentation
-
-Lihat folder [`docs`](./docs):
-
-- [`docs/architecture.md`](./docs/architecture.md)
-- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
-- [`docs/providers.md`](./docs/providers.md)
-- [`docs/cli.md`](./docs/cli.md)
