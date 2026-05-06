@@ -24,11 +24,20 @@
   "scripts": {
     "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "bunx lint-staged"
+  },
+  "lint-staged": {
+    "*.ts": "bash -c 'bun run typecheck'"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",
     "bun-types": "^1.3.13",
+    "lint-staged": "^16.4.0",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "^5.8.3"
   },
   "keywords": [
