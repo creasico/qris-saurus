@@ -74,7 +74,12 @@ describe("provider registry", () => {
   });
 
   test("detected provider info has expected shape", () => {
-    const provider = detectProvider(shopeepayStaticQris)!;
+    const provider = detectProvider(shopeepayStaticQris);
+    expect(provider).toBeDefined();
+    expect(provider).not.toBeNull();
+    if (!provider) {
+      throw new Error("Provider should not be null");
+    }
     expect(provider.info.code).toBeTypeOf("string");
     expect(provider.info.name).toBeTypeOf("string");
     expect(Array.isArray(provider.info.aliases)).toBe(true);

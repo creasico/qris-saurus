@@ -125,6 +125,10 @@ Content-Type: application/json
   "email": "customer@example.com",
   "paymentMethod": "QRIS",
   "signature": "...",  // MD5(merchantCode + amount + orderId + merchantKey)
+  // ⚠️ SECURITY WARNING: MD5 is cryptographically broken and collision-prone.
+  // This requirement is a limitation of the Duitku API, not recommended practice.
+  // Always generate signatures server-side, protect merchantKey, and prefer
+  // HMAC-SHA256 or stronger algorithms for internal/future integrations.
   "returnUrl": "https://...",
   "callbackUrl": "https://...",
   "expiryPeriod": 1440  // menit
@@ -474,16 +478,31 @@ const manager = new TokenManager(120); // refresh 120 detik sebelum expired
 Jika gateway mengembalikan `401 Unauthorized`, invalidate token agar di-refresh pada request berikutnya:
 
 ```ts
+// Single-request approach with retry guidance:
 try {
   const res = await fetch("https://provider.com/api/...", {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
     tokenManager.invalidate("my-provider");
-    throw new Error("Token expired, retry on next request");
+    // Caller MUST catch this error and retry the request to obtain a fresh token
+    throw new Error("Token expired, invalidated. Caller should retry request with refreshed token.");
   }
 } catch (err) {
   throw err;
+}
+
+// Or implement automatic retry with fresh token:
+async function fetchWithRetry(url: string, init: RequestInit, tokenManager: TokenManager, cacheKey: string) {
+  let token = await tokenManager.getToken(cacheKey, fetcher);
+  let res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+  
+  if (res.status === 401) {
+    tokenManager.invalidate(cacheKey);
+    token = await tokenManager.getToken(cacheKey, fetcher); // Fresh token
+    res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+  }
+  return res;
 }
 ```
 

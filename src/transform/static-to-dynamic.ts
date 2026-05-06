@@ -1,7 +1,7 @@
-import type { DynamicOptions, QrisData, TlvNode } from "../core/types";
 import { parse } from "../core/parser";
 import { serialize } from "../core/serializer";
-import { findNode, upsertNode, deleteNode } from "../utils/tlv";
+import type { DynamicOptions, QrisData, TlvNode } from "../core/types";
+import { deleteNode, findNode, upsertNode } from "../utils/tlv";
 
 function formatAmount(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -12,7 +12,9 @@ function formatAmount(amount: number): string {
 }
 
 function withSubTag(children: TlvNode[], id: string, value: string): TlvNode[] {
-  const node: TlvNode = { id, length: value.length, value };
+  // Use Buffer.byteLength to compute actual UTF-8 byte length, not string length
+  const length = Buffer.byteLength(value, "utf8");
+  const node: TlvNode = { id, length, value };
   return upsertNode(children, node);
 }
 
@@ -69,6 +71,11 @@ export function staticToDynamic(qrisString: string, options: DynamicOptions): st
 
   if (pointOfInitiation === "12") {
     throw new Error("QRIS payload is already dynamic");
+  }
+
+  // Only allow conversion of static QRIS (POI must be "11" or absent, which defaults to "11")
+  if (pointOfInitiation !== undefined && pointOfInitiation !== "11") {
+    throw new Error("QRIS payload is not static (Point of Initiation Method must be '11')");
   }
 
   let nodes = replaceNode(parsed.nodes, "01", "12");

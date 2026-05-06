@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import { pollUntilSettled, type PollOptions } from "./poller";
 import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig } from "./types";
@@ -9,6 +9,8 @@ const STATUS_MAP: Record<string, PaymentStatusCode> = {
   "01": "pending",
   "02": "cancelled",
 };
+
+const DEFAULT_FETCH_TIMEOUT_MS = 30000; // 30 seconds
 
 function md5(input: string): string {
   return createHash("md5").update(input).digest("hex");
@@ -22,30 +24,43 @@ export class DuitkuAdapter {
   }
 
   private async request<T>(url: string, body: unknown): Promise<T> {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS);
 
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("application/json")) {
-      const text = await response.text();
-      throw new Error(`Duitku error [${response.status}]: ${text || response.statusText}`);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Duitku error [${response.status}]: ${text || response.statusText}`);
+      }
+
+      const data = (await response.json()) as T & Record<string, unknown>;
+
+      if (!response.ok) {
+        const errData = data as Record<string, unknown>;
+        const msg = errData.statusMessage ?? errData.message ?? response.statusText;
+        throw new Error(`Duitku error [${response.status}]: ${msg}`);
+      }
+
+      return data;
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(`Duitku request timeout (${DEFAULT_FETCH_TIMEOUT_MS}ms)`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const data = (await response.json()) as T & Record<string, unknown>;
-
-    if (!response.ok) {
-      const errData = data as Record<string, unknown>;
-      const msg = errData.statusMessage ?? errData.message ?? response.statusText;
-      throw new Error(`Duitku error [${response.status}]: ${msg}`);
-    }
-
-    return data;
   }
 
   /**
@@ -61,6 +76,8 @@ export class DuitkuAdapter {
     );
 
     const base = this.baseUrl(config.sandbox);
+    // Use customerEmail if provided, otherwise use a traceable fallback derived from merchant
+    const customerEmail = options.customerEmail ?? `no-reply+${config.merchantCode}@duitku.local`;
     const data = await this.request<Record<string, unknown>>(
       `${base}/createInvoice`,
       {
@@ -68,7 +85,7 @@ export class DuitkuAdapter {
         paymentAmount: options.amount,
         merchantOrderId: options.orderId,
         productDetails: options.description ?? `Pembayaran ${options.orderId}`,
-        email: options.customerEmail ?? "customer@example.com",
+        email: customerEmail,
         paymentMethod: "QRIS",
         signature,
         returnUrl: config.returnUrl,
@@ -138,7 +155,7 @@ export class DuitkuAdapter {
   /**
    * Verify a Duitku webhook callback.
    * Duitku signs callbacks as: MD5(merchantCode + amount + merchantOrderId + merchantKey)
-   * Compare against the `signature` field in the callback payload.
+   * Compare against the `signature` field in the callback payload using constant-time comparison.
    */
   verifyWebhook(
     payload: Record<string, unknown>,
@@ -148,7 +165,18 @@ export class DuitkuAdapter {
     const amount = String(payload.amount ?? "");
     const merchantOrderId = String(payload.merchantOrderId ?? "");
     const expected = md5(merchantCode + amount + merchantOrderId + config.merchantKey);
-    return typeof payload.signature === "string" && payload.signature === expected;
+    const providedSignature = String(payload.signature ?? "");
+
+    // Use constant-time comparison to prevent timing attacks
+    try {
+      return (
+        providedSignature.length === expected.length &&
+        timingSafeEqual(Buffer.from(providedSignature, "utf8"), Buffer.from(expected, "utf8"))
+      );
+    } catch {
+      // timingSafeEqual throws if lengths differ, return false
+      return false;
+    }
   }
 
   /**

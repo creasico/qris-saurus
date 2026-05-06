@@ -34,6 +34,7 @@ interface TokenEntry {
  */
 export class TokenManager {
   private readonly cache = new Map<string, TokenEntry>();
+  private readonly inFlight = new Map<string, Promise<FetchTokenResult>>();
 
   constructor(private readonly bufferSeconds: number = 60) {}
 
@@ -41,6 +42,8 @@ export class TokenManager {
    * Return a valid access token for `cacheKey`.
    * Fetches a fresh token via `fetcher` when the cache is empty or the
    * cached token will expire within `bufferSeconds`.
+   * Concurrent calls for the same cacheKey are deduplicated to prevent
+   * multiple fetches in flight.
    */
   async getToken(cacheKey: string, fetcher: TokenFetcher): Promise<string> {
     const cached = this.cache.get(cacheKey);
@@ -51,14 +54,30 @@ export class TokenManager {
       return cached.accessToken;
     }
 
-    const { accessToken, expiresInSeconds } = await fetcher();
+    // Check if we already have an in-flight request for this cacheKey
+    const inFlightPromise = this.inFlight.get(cacheKey);
+    if (inFlightPromise) {
+      const result = await inFlightPromise;
+      return result.accessToken;
+    }
 
-    this.cache.set(cacheKey, {
-      accessToken,
-      expiresAt: now + expiresInSeconds * 1000,
-    });
+    // Create new fetch promise and store it in inFlight
+    const fetchPromise = fetcher();
+    this.inFlight.set(cacheKey, fetchPromise);
 
-    return accessToken;
+    try {
+      const { accessToken, expiresInSeconds } = await fetchPromise;
+
+      this.cache.set(cacheKey, {
+        accessToken,
+        expiresAt: now + expiresInSeconds * 1000,
+      });
+
+      return accessToken;
+    } finally {
+      // Always remove from inFlight, even if fetch fails
+      this.inFlight.delete(cacheKey);
+    }
   }
 
   /**

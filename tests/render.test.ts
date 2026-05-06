@@ -19,21 +19,29 @@ describe("render", () => {
 
   test("renders QRIS payload to PNG file", async () => {
     const outputPath = "/tmp/qris-saurus-test.png";
-    if (existsSync(outputPath)) rmSync(outputPath);
+    try {
+      if (existsSync(outputPath)) rmSync(outputPath);
 
-    await renderQrToFile(genericStaticQris, outputPath);
+      await renderQrToFile(genericStaticQris, outputPath);
 
-    expect(existsSync(outputPath)).toBe(true);
-    rmSync(outputPath);
+      expect(existsSync(outputPath)).toBe(true);
+    } finally {
+      // Ensure cleanup even if assertion throws
+      if (existsSync(outputPath)) rmSync(outputPath);
+    }
   });
 
   test("renderQrToFile respects custom width option", async () => {
     const outputPath = "/tmp/qris-saurus-test-narrow.png";
-    if (existsSync(outputPath)) rmSync(outputPath);
+    try {
+      if (existsSync(outputPath)) rmSync(outputPath);
 
-    await renderQrToFile(genericStaticQris, outputPath, { width: 128 });
+      await renderQrToFile(genericStaticQris, outputPath, { width: 128 });
 
-    expect(existsSync(outputPath)).toBe(true);
-    rmSync(outputPath);
+      expect(existsSync(outputPath)).toBe(true);
+    } finally {
+      // Ensure cleanup even if assertion throws
+      if (existsSync(outputPath)) rmSync(outputPath);
+    }
   });
 });

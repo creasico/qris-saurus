@@ -7,12 +7,14 @@ const STATUS_MAP: Record<string, PaymentStatusCode> = {
   pending: "pending",
   settlement: "paid",
   capture: "paid",
-  refund: "paid",
+  refund: "refunded",
   expire: "expired",
   cancel: "cancelled",
   deny: "failed",
   failure: "failed",
 };
+
+const DEFAULT_FETCH_TIMEOUT_MS = 30000; // 30 seconds
 
 export class MidtransAdapter {
   private baseUrl(sandbox = false): string {
@@ -29,23 +31,38 @@ export class MidtransAdapter {
     url: string,
     init: RequestInit,
   ): Promise<T> {
-    const response = await fetch(url, init);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS);
 
-    let data: T & Record<string, unknown>;
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      data = (await response.json()) as T & Record<string, unknown>;
-    } else {
-      const text = await response.text();
-      throw new Error(`Midtrans error [${response.status}]: ${text || response.statusText}`);
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      let data: T & Record<string, unknown>;
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        data = (await response.json()) as T & Record<string, unknown>;
+      } else {
+        const text = await response.text();
+        throw new Error(`Midtrans error [${response.status}]: ${text || response.statusText}`);
+      }
+
+      if (!response.ok) {
+        const msg = (data as Record<string, unknown>).status_message ?? response.statusText;
+        throw new Error(`Midtrans error [${response.status}]: ${msg}`);
+      }
+
+      return data;
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(`Midtrans request timeout (${DEFAULT_FETCH_TIMEOUT_MS}ms)`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    if (!response.ok) {
-      const msg = (data as Record<string, unknown>).status_message ?? response.statusText;
-      throw new Error(`Midtrans error [${response.status}]: ${msg}`);
-    }
-
-    return data;
   }
 
   /**

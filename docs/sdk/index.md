@@ -39,7 +39,7 @@ Bun/TypeScript library untuk mengubah QRIS statis menjadi dinamis — dengan duk
 bun add qris-saurus
 
 # dari source
-git clone <repo>
+git clone https://github.com/creasico/qris-saurus.git
 cd qris-saurus
 bun install
 bun run build
@@ -72,7 +72,6 @@ import {
   parse,
   detectProvider,
   makeDynamic,
-  staticToDynamic,
   renderQrToDataUrl,
   renderQrToFile,
 } from "qris-saurus";

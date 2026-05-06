@@ -27,7 +27,22 @@ function readFlag(args: string[], name: string): string | undefined {
     return undefined;
   }
 
-  return args[index + 1];
+  const nextIndex = index + 1;
+  if (nextIndex >= args.length) {
+    return undefined;
+  }
+
+  const nextToken = args[nextIndex];
+  if (!nextToken) {
+    return undefined;
+  }
+
+  // Don't return the next token if it's another flag (starts with - or --)
+  if (nextToken.startsWith("-")) {
+    return undefined;
+  }
+
+  return nextToken;
 }
 
 function requireValue(value: string | undefined, message: string): string {
@@ -77,6 +92,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Validate command first before resolving input
+  const validCommands = new Set(["validate", "parse", "detect", "dynamic", "render"]);
+  if (!validCommands.has(command)) {
+    throw new Error(`Unknown command: ${command}`);
+  }
+
   const maybeInput = args[0];
   const positionalInput = maybeInput && !maybeInput.startsWith("--") ? maybeInput : undefined;
   const flagArgs = positionalInput ? args.slice(1) : args;
@@ -97,7 +118,12 @@ async function main(): Promise<void> {
       return;
     }
     case "dynamic": {
-      const amount = Number.parseFloat(requireValue(readFlag(flagArgs, "--amount"), "--amount is required"));
+      const amountStr = requireValue(readFlag(flagArgs, "--amount"), "--amount is required");
+      const amount = Number.parseFloat(amountStr);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("--amount must be a positive number");
+      }
+
       const merchantRef = readFlag(flagArgs, "--merchant-ref");
       const terminalLabel = readFlag(flagArgs, "--terminal-label");
 
@@ -122,20 +148,28 @@ async function main(): Promise<void> {
     }
     case "render": {
       const output = requireValue(readFlag(flagArgs, "--output"), "--output is required");
-      const width = readFlag(flagArgs, "--width");
-      const margin = readFlag(flagArgs, "--margin");
+      const widthStr = readFlag(flagArgs, "--width");
+      const marginStr = readFlag(flagArgs, "--margin");
 
       const renderOptions: {
         width?: number;
         margin?: number;
       } = {};
 
-      if (width) {
-        renderOptions.width = Number.parseInt(width, 10);
+      if (widthStr) {
+        const width = Number.parseInt(widthStr, 10);
+        if (!Number.isFinite(width) || width < 0 || width > 10000) {
+          throw new Error("--width must be a number between 0 and 10000");
+        }
+        renderOptions.width = width;
       }
 
-      if (margin) {
-        renderOptions.margin = Number.parseInt(margin, 10);
+      if (marginStr) {
+        const margin = Number.parseInt(marginStr, 10);
+        if (!Number.isFinite(margin) || margin < 0 || margin > 100) {
+          throw new Error("--margin must be a number between 0 and 100");
+        }
+        renderOptions.margin = margin;
       }
 
       await renderQrToFile(input, output, renderOptions);
@@ -143,8 +177,6 @@ async function main(): Promise<void> {
       console.log(output);
       return;
     }
-    default:
-      throw new Error(`Unknown command: ${command}`);
   }
 }
 

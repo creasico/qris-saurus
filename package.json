@@ -31,7 +31,7 @@
     "pre-commit": "bunx lint-staged"
   },
   "lint-staged": {
-    "*.ts": "bash -c 'bun run typecheck'"
+    "src/**/*.ts": "bun run typecheck"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",

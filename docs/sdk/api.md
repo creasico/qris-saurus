@@ -213,8 +213,14 @@ interface RenderQrOptions {
 **Contoh:**
 
 ```ts
-const dataUrl = await renderQrToDataUrl(dynamic.qrisString, { width: 400 });
+// Jika menggunakan staticToDynamic, yang mengembalikan string langsung:
+const qrisString = staticToDynamic(staticQris, { amount: 100000 });
+const dataUrl = await renderQrToDataUrl(qrisString, { width: 400 });
 // <img src={dataUrl} />
+
+// Atau jika menggunakan makeDynamic, yang mengembalikan object dengan .qrisString:
+const result = makeDynamic(staticQris, { amount: 100000 });
+const dataUrl = await renderQrToDataUrl(result.qrisString, { width: 400 });
 ```
 
 ---

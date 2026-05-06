@@ -36,8 +36,11 @@ export function readTlv(input: string): TlvNode[] {
           ...node,
           children: readTlv(value),
         };
-      } catch {
-        node = { ...node };
+      } catch (err) {
+        // Re-throw parse errors with context about which tag failed
+        throw new Error(
+          `Failed to parse composite tag ${id}: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
       }
     }
 
@@ -52,7 +55,15 @@ export function writeTlv(nodes: TlvNode[]): string {
   return nodes
     .map((node) => {
       const value = node.children ? writeTlv(node.children) : node.value;
-      return `${node.id}${value.length.toString().padStart(2, "0")}${value}`;
+      const length = value.length;
+      
+      if (length > 99) {
+        throw new Error(
+          `TLV value for tag ${node.id} exceeds maximum length of 99 (got ${length})`,
+        );
+      }
+      
+      return `${node.id}${length.toString().padStart(2, "0")}${value}`;
     })
     .join("");
 }

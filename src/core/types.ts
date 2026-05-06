@@ -42,7 +42,7 @@ export interface ValidationResult {
   errors: string[];
 }
 
-export type PaymentStatusCode = "pending" | "paid" | "expired" | "failed" | "cancelled";
+export type PaymentStatusCode = "pending" | "paid" | "refunded" | "expired" | "failed" | "cancelled";
 
 export interface PaymentStatusResult {
   orderId: string;

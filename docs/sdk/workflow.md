@@ -49,7 +49,11 @@ import {
   renderQrToDataUrl,
 } from "qris-saurus";
 
-const STATIC_QRIS = process.env.MERCHANT_QRIS_STATIC!;
+const MERCHANT_QRIS_STATIC = process.env.MERCHANT_QRIS_STATIC;
+if (!MERCHANT_QRIS_STATIC) {
+  throw new Error("MERCHANT_QRIS_STATIC environment variable is required");
+}
+const STATIC_QRIS = MERCHANT_QRIS_STATIC;
 
 export async function createCheckoutQr(orderId: string, amount: number) {
   const check = validate(STATIC_QRIS);
@@ -180,7 +184,11 @@ import { Hono } from "hono";
 import { makeDynamic, renderQrToDataUrl, validate } from "qris-saurus";
 
 const app = new Hono();
-const STATIC_QRIS = process.env.MERCHANT_QRIS!;
+const MERCHANT_QRIS = process.env.MERCHANT_QRIS;
+if (!MERCHANT_QRIS) {
+  throw new Error("MERCHANT_QRIS environment variable is required");
+}
+const STATIC_QRIS = MERCHANT_QRIS;
 
 app.post("/payment/qr", async (c) => {
   const { amount, orderId } = await c.req.json<{
