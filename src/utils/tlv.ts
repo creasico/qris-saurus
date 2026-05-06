@@ -13,11 +13,12 @@ export function readTlv(input: string): TlvNode[] {
 
     const id = input.slice(cursor, cursor + 2);
     const lengthText = input.slice(cursor + 2, cursor + 4);
-    const length = Number.parseInt(lengthText, 10);
 
-    if (Number.isNaN(length)) {
-      throw new Error(`Invalid TLV length for tag ${id}`);
+    if (!/^\d{2}$/.test(lengthText)) {
+      throw new Error(`Invalid TLV length for tag ${id}: expected 2 ASCII digits, got "${lengthText}"`);
     }
+
+    const length = Number.parseInt(lengthText, 10);
 
     const valueStart = cursor + 4;
     const valueEnd = valueStart + length;

@@ -104,15 +104,18 @@ Contoh annotasi payload nyata:
 Saat `staticToDynamic()` dipanggil, library melakukan:
 
 1. **Parse** — payload dipecah menjadi array TLV nodes
-2. **Validasi** — cek CRC dan tag `00` (format indicator) wajib ada
+2. **Validasi** — cek kehadiran dan validitas CRC (tag `63`)
 3. **Ubah initiation method** — tag `01` dari `11` → `12`
 4. **Sisipkan amount** — tambahkan tag `54` dengan nilai amount
 5. **Sisipkan additional data** — tag `62` berisi sub-tag:
    - `05` = merchant reference (bila ada)
    - `07` = terminal label (bila ada)
-   - `08` = tip indicator (bila ada)
-6. **Hitung ulang CRC** — CRC16/CCITT atas seluruh payload kecuali 4 char terakhir
-7. **Serialize** — nodes dikembalikan ke string payload
+6. **Sisipkan tip** — bila `tipType` diberikan, sisipkan tag root:
+   - `55` = tip indicator (`02` = fixed, `03` = percent)
+   - `56` = nominal tip fixed
+   - `57` = persentase tip
+7. **Hitung ulang CRC** — CRC16/CCITT atas seluruh payload kecuali 4 char terakhir
+8. **Serialize** — nodes dikembalikan ke string payload
 
 ### Key QRIS Tags
 
@@ -124,7 +127,7 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 | `52`      | Merchant category code (MCC) | `5812`                    |
 | `53`      | Currency code                | `360` (IDR)               |
 | `54`      | Transaction amount           | `25000.00`                |
-| `55`      | Tip or convenience indicator | `01` fixed, `02` percent  |
+| `55`      | Tip or convenience indicator | `02` fixed, `03` percent  |
 | `56`      | Fixed convenience fee        | `1000.00`                 |
 | `57`      | Percentage convenience fee   | `2.00`                    |
 | `58`      | Country code                 | `ID`                      |
@@ -206,21 +209,26 @@ console.log(validate(dynamicQris));
 
 ## Error Handling
 
-Semua operasi core bersifat sinkron dan tidak throw — hasil validasi dikembalikan via `ValidationResult`. Gateway adapters menggunakan `async/await` dan dapat throw bila request gagal.
+`validate()` bersifat sinkron dan tidak pernah throw — hasil dikembalikan via `ValidationResult`. Namun `parse()`, `staticToDynamic()`, dan `makeDynamic()` dapat throw bila input tidak valid (CRC hilang/salah, amount tidak valid, dsb). Gateway adapters menggunakan `async/await` dan dapat throw bila request gagal.
 
 ```ts
-import { validate, makeDynamic, midtransAdapter } from "qris-saurus";
+import { validate, makeDynamic, parse, midtransAdapter } from "qris-saurus";
 
-// Core — tidak throw, cek .valid
+// validate() — tidak throw, cek .valid
 const check = validate(qrisString);
 if (!check.valid) {
   console.error("Invalid QRIS:", check.errors);
   // errors: ["Invalid CRC value", "Missing required tag 00", ...]
 }
 
-// Transform — tidak throw, tapi QRIS input harus valid
-const dynamic = makeDynamic(qrisString, { amount: 25000 });
-console.log(dynamic.source); // "local"
+// parse() / makeDynamic() / staticToDynamic() — dapat throw, gunakan try/catch
+try {
+  const dynamic = makeDynamic(qrisString, { amount: 25000 });
+  console.log(dynamic.source); // "local"
+} catch (err) {
+  // Input tidak valid, CRC salah, atau amount tidak valid
+  console.error("Transform error:", err);
+}
 
 // Gateway adapter — dapat throw, tangkap dengan try/catch
 try {

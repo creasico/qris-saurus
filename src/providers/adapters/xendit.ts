@@ -14,7 +14,15 @@ export class XenditAdapter {
     init: RequestInit,
   ): Promise<T> {
     const response = await fetch(url, init);
-    const data = (await response.json()) as T & Record<string, unknown>;
+
+    let data: T & Record<string, unknown>;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      data = (await response.json()) as T & Record<string, unknown>;
+    } else {
+      const text = await response.text();
+      throw new Error(`Xendit error [${response.status}]: ${text || response.statusText}`);
+    }
 
     if (!response.ok) {
       const errData = data as Record<string, unknown>;

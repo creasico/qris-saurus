@@ -15,6 +15,10 @@ export interface DuitkuConfig {
   merchantKey: string;
   /** Gunakan sandbox endpoint. Default: false */
   sandbox?: boolean;
+  /** URL redirect setelah pembayaran. Wajib untuk Duitku createInvoice. */
+  returnUrl: string;
+  /** URL callback notifikasi pembayaran dari Duitku. Wajib untuk Duitku createInvoice. */
+  callbackUrl: string;
 }
 
 export interface ApiQrCreateOptions extends DynamicOptions {
@@ -22,6 +26,11 @@ export interface ApiQrCreateOptions extends DynamicOptions {
   orderId: string;
   description?: string;
   customerEmail?: string;
+  /**
+   * Catatan: field dari DynamicOptions seperti `tipType`, `tipValue`,
+   * `merchantRef`, dan `terminalLabel` tidak digunakan oleh gateway adapter.
+   * Field-field tersebut hanya berlaku untuk transformasi lokal via `staticToDynamic()`.
+   */
 }
 
 export interface ApiQrResult {

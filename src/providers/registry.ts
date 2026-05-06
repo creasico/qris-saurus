@@ -16,13 +16,17 @@ const providers: ProviderAdapter[] = [
   duitkuProvider,
 ];
 
-export function listProviders(): ProviderAdapter[] {
+export function listProviders(): ReadonlyArray<ProviderAdapter> {
   return [...providers];
 }
 
 export function detectProvider(qrisString: string): ProviderAdapter | null {
-  const parsed = parse(qrisString);
-  return providers.find((provider) => provider.matches(parsed.nodes)) ?? null;
+  try {
+    const parsed = parse(qrisString);
+    return providers.find((provider) => provider.matches(parsed.nodes)) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function makeDynamic(qrisString: string, options: DynamicOptions): DynamicResult {

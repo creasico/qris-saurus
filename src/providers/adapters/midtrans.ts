@@ -30,7 +30,15 @@ export class MidtransAdapter {
     init: RequestInit,
   ): Promise<T> {
     const response = await fetch(url, init);
-    const data = (await response.json()) as T & Record<string, unknown>;
+
+    let data: T & Record<string, unknown>;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      data = (await response.json()) as T & Record<string, unknown>;
+    } else {
+      const text = await response.text();
+      throw new Error(`Midtrans error [${response.status}]: ${text || response.statusText}`);
+    }
 
     if (!response.ok) {
       const msg = (data as Record<string, unknown>).status_message ?? response.statusText;
@@ -65,9 +73,18 @@ export class MidtransAdapter {
       }),
     });
 
-    const qrisString = typeof data.qr_string === "string" ? data.qr_string : null;
+    // Midtrans dapat mengembalikan qr_string langsung, atau URL QR image via actions[].url
+    let qrisString: string | null = typeof data.qr_string === "string" ? data.qr_string : null;
+    if (!qrisString && Array.isArray(data.actions)) {
+      const actions = data.actions as Array<Record<string, unknown>>;
+      const generateAction = actions.find((a) => a.name === "generate-qr-code");
+      const url = generateAction?.url ?? actions[0]?.url;
+      if (typeof url === "string") {
+        qrisString = url;
+      }
+    }
     if (!qrisString) {
-      throw new Error("Midtrans response tidak mengandung qr_string");
+      throw new Error("Midtrans response tidak mengandung qr_string atau actions[].url");
     }
 
     return {

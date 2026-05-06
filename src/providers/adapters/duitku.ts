@@ -31,6 +31,12 @@ export class DuitkuAdapter {
       body: JSON.stringify(body),
     });
 
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`Duitku error [${response.status}]: ${text || response.statusText}`);
+    }
+
     const data = (await response.json()) as T & Record<string, unknown>;
 
     if (!response.ok) {
@@ -65,8 +71,8 @@ export class DuitkuAdapter {
         email: options.customerEmail ?? "customer@example.com",
         paymentMethod: "QRIS",
         signature,
-        returnUrl: "https://example.com/return",
-        callbackUrl: "https://example.com/callback",
+        returnUrl: config.returnUrl,
+        callbackUrl: config.callbackUrl,
       },
     );
 

@@ -75,14 +75,11 @@ Content-Type: application/json
   "transaction_details": {
     "order_id": "INV-2026-001",
     "gross_amount": 75000
-  },
-  "qris": {
-    "acquirer": "gopay"
   }
 }
 ```
 
-Response berisi `actions[].url` dengan URL ke QR image, atau `qr_string` tergantung tipe response.
+Response berisi `qr_string` atau `actions[].url` (URL ke QR image) tergantung tipe response. Adapter ini mendukung keduanya.
 
 - Membutuhkan: Server Key, dikodekan Base64
 - Expiry: dikontrol oleh Midtrans (biasanya 15–30 menit)
