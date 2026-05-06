@@ -1,0 +1,53 @@
+{
+  "name": "qris-saurus",
+  "version": "0.1.0",
+  "description": "Bun/TypeScript SDK to parse, validate, and transform static QRIS into dynamic QRIS.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "qris-saurus": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "bunx lint-staged"
+  },
+  "lint-staged": {
+    "src/**/*.ts": "bun run typecheck"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "bun-types": "^1.3.13",
+    "lint-staged": "^16.4.0",
+    "simple-git-hooks": "^2.13.1",
+    "typescript": "^5.8.3"
+  },
+  "keywords": [
+    "qris",
+    "payments",
+    "emvco",
+    "bun",
+    "typescript"
+  ],
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
