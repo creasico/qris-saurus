@@ -8,6 +8,8 @@
 bun run build
 ```
 
+Setelah build, file CLI ada di `dist/cli.js`.
+
 ## Commands
 
 ### Validate
@@ -53,10 +55,19 @@ Output berupa payload QRIS baru yang sudah:
 - membawa additional data bila diberikan
 - memiliki CRC baru yang valid
 
+### Render PNG
+
+```bash
+bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --margin 2
+```
+
+Output command ini adalah path file PNG yang berhasil dibuat.
+
 ## Example workflow
 
 1. ambil payload QRIS statis
 2. jalankan `validate`
 3. jalankan `detect`
 4. jalankan `dynamic`
-5. gunakan output string hasil `dynamic` untuk dirender ke QR image di sistem Anda
+5. ambil payload hasil lalu render jadi image, atau render payload langsung dengan `render`
+6. gunakan file PNG di UI, POS, invoice, atau sistem internal Anda

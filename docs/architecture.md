@@ -20,6 +20,9 @@ Komponen utamanya:
 - `src/core/serializer.ts`
 - `src/core/validator.ts`
 - `src/transform/static-to-dynamic.ts`
+- `src/render.ts`
+
+`src/render.ts` berada di atas payload layer. Ia tidak mengubah struktur QRIS, hanya mengubah string payload yang sudah valid menjadi representasi gambar QR.
 
 ### Internal flow
 

@@ -6,3 +6,4 @@ export * from "./core/validator";
 export * from "./transform/static-to-dynamic";
 export * from "./providers/base";
 export * from "./providers/registry";
+export * from "./render";

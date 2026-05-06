@@ -27,6 +27,7 @@
     "test": "bun test"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.5",
     "bun-types": "latest",
     "typescript": "^5.8.3"
   },
@@ -36,5 +37,8 @@
     "emvco",
     "bun",
     "typescript"
-  ]
+  ],
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
 }

@@ -136,6 +136,44 @@ bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-0
 
 Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
 
+### Render QR image
+
+```bash
+bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --margin 2
+```
+
+Command ini membuat file PNG dari payload QRIS.
+
+## Rendering dari library
+
+```ts
+import { renderQrToDataUrl, renderQrToFile } from "qris-saurus";
+
+const dataUrl = await renderQrToDataUrl(qrisPayload);
+await renderQrToFile(qrisPayload, "./qris.png");
+```
+
+Helper ini berguna kalau kamu ingin:
+- menampilkan preview QR di web/app internal
+- menyimpan QR image ke file
+- mengirim hasil render ke pipeline lain setelah payload selesai dibentuk
+
+## Available API
+
+- `parse(qrisString)`
+- `serialize(qrisData)`
+- `validate(qrisString)`
+- `computeCrc(input)`
+- `verifyCrc(qrisString)`
+- `staticToDynamic(qrisString, options)`
+- `detectProvider(qrisString)`
+- `listProviders()`
+- `makeDynamic(qrisString, options)`
+- `renderQrToDataUrl(qrisString, options?)`
+- `renderQrToFile(qrisString, outputPath, options?)`
+
+## Development
+
 ## Available API
 
 - `parse(qrisString)`

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { detectProvider, makeDynamic, parse, validate } from "./index";
+import { detectProvider, makeDynamic, parse, renderQrToFile, validate } from "./index";
 
 function printHelp(): void {
   console.log(`qris-saurus CLI
@@ -10,6 +10,7 @@ Usage:
   qris-saurus parse <qris>
   qris-saurus detect <qris>
   qris-saurus dynamic <qris> --amount <number> [--merchant-ref <text>] [--terminal-label <text>]
+  qris-saurus render <qris> --output <file.png> [--width <number>] [--margin <number>]
 `);
 }
 
@@ -30,7 +31,7 @@ function requireValue(value: string | undefined, message: string): string {
   return value;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [command, input, ...rest] = process.argv.slice(2);
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -80,14 +81,35 @@ function main(): void {
       console.log(result.qrisString);
       return;
     }
+    case "render": {
+      const output = requireValue(readFlag(rest, "--output"), "--output is required");
+      const width = readFlag(rest, "--width");
+      const margin = readFlag(rest, "--margin");
+
+      const renderOptions: {
+        width?: number;
+        margin?: number;
+      } = {};
+
+      if (width) {
+        renderOptions.width = Number.parseInt(width, 10);
+      }
+
+      if (margin) {
+        renderOptions.margin = Number.parseInt(margin, 10);
+      }
+
+      await renderQrToFile(input, output, renderOptions);
+
+      console.log(output);
+      return;
+    }
     default:
       throw new Error(`Unknown command: ${command}`);
   }
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   console.error(error instanceof Error ? error.message : "Unknown CLI error");
   process.exit(1);
-}
+});
