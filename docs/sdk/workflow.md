@@ -1,5 +1,7 @@
 # Workflow Guide
 
+[English](../en/sdk/workflow.md) | Indonesian
+
 Panduan ini menjelaskan alur end-to-end penggunaan `qris-saurus` untuk berbagai skenario nyata.
 
 ---

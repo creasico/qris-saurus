@@ -1,5 +1,7 @@
 # Gateway Integration
 
+[English](../en/sdk/gateway.md) | Indonesian
+
 Dokumen ini menjelaskan perbedaan antara **local transform** dan **gateway API**, kapan memakai masing-masing, dan cara menggunakan adapter gateway yang sudah tersedia.
 
 ---

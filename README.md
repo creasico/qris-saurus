@@ -13,6 +13,8 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 
 </div>
 
+[English](./README.en.md) | Indonesian
+
 ## Apa itu QRIS?
 
 QRIS adalah standar QR payment di Indonesia yang menyatukan banyak metode pembayaran di bawah satu format QR. Secara teknis, payload QRIS adalah string **TLV** (`Tag-Length-Value`) berbasis spesifikasi EMVCo. Setiap segmen punya:
@@ -148,6 +150,22 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 | `63`      | CRC                          | 4 char hex                |
 
 ## Install
+
+Install from your preferred package manager:
+
+```bash
+npm install qris-saurus
+```
+
+```bash
+pnpm add qris-saurus
+```
+
+```bash
+bun add qris-saurus
+```
+
+If you are working on this repository locally:
 
 ```bash
 bun install
