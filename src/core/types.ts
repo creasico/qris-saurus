@@ -41,3 +41,13 @@ export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
+
+export type PaymentStatusCode = "pending" | "paid" | "expired" | "failed" | "cancelled";
+
+export interface PaymentStatusResult {
+  orderId: string;
+  status: PaymentStatusCode;
+  amount?: number;
+  paidAt?: Date;
+  raw: unknown;
+}
