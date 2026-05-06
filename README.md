@@ -116,10 +116,18 @@ bun run build
 bun run dist/cli.js validate "<QRIS_PAYLOAD>"
 ```
 
+```bash
+bun run dist/cli.js validate --input-file ./payload.txt
+```
+
 ### Parse payload
 
 ```bash
 bun run dist/cli.js parse "<QRIS_PAYLOAD>"
+```
+
+```bash
+cat ./payload.txt | bun run dist/cli.js parse
 ```
 
 ### Detect provider
@@ -128,11 +136,120 @@ bun run dist/cli.js parse "<QRIS_PAYLOAD>"
 bun run dist/cli.js detect "<QRIS_PAYLOAD>"
 ```
 
+```bash
+bun run dist/cli.js detect --input-file ./payload.txt
+```
+
 ### Convert static QRIS to dynamic QRIS
 
 ```bash
 bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-001 --terminal-label POS-A
 ```
+
+```bash
+cat ./payload.txt | bun run dist/cli.js dynamic --amount 12500 --merchant-ref INV-001
+```
+
+Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
+
+### Render QR image
+
+```bash
+bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --margin 2
+```
+
+```bash
+cat ./payload.txt | bun run dist/cli.js render --output ./qris.png
+```
+
+Command ini membuat file PNG dari payload QRIS.
+
+## Rendering dari library
+
+```ts
+import { renderQrToDataUrl, renderQrToFile } from "qris-saurus";
+
+const dataUrl = await renderQrToDataUrl(qrisPayload);
+await renderQrToFile(qrisPayload, "./qris.png");
+```
+
+Helper ini berguna kalau kamu ingin:
+- menampilkan preview QR di web/app internal
+- menyimpan QR image ke file
+- mengirim hasil render ke pipeline lain setelah payload selesai dibentuk
+
+## Available API
+
+- `parse(qrisString)`
+- `serialize(qrisData)`
+- `validate(qrisString)`
+- `computeCrc(input)`
+- `verifyCrc(qrisString)`
+- `staticToDynamic(qrisString, options)`
+- `detectProvider(qrisString)`
+- `listProviders()`
+- `makeDynamic(qrisString, options)`
+- `renderQrToDataUrl(qrisString, options?)`
+- `renderQrToFile(qrisString, outputPath, options?)`
+
+## Development
+
+```bash
+bun install
+bun test
+bun run typecheck
+bun run build
+```
+
+## Documentation
+
+Lihat folder [`docs`](./docs):
+
+- [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
+- [`docs/providers.md`](./docs/providers.md)
+- [`docs/cli.md`](./docs/cli.md)
+
+## CLI input priority
+
+CLI menerima input dengan urutan prioritas:
+1. argumen langsung
+2. `--input-file <file>`
+3. stdin / pipe
+
+Ini membuat flow seperti berikut jadi bisa dipakai:
+
+```bash
+cat payload.txt | qris-saurus render --output qris.png
+```
+
+```bash
+qris-saurus dynamic --input-file payload.txt --amount 25000
+```
+
+```bash
+qris-saurus validate "<QRIS_PAYLOAD>"
+```
+
+## Development
+
+```bash
+bun install
+bun test
+bun run typecheck
+bun run build
+```
+
+## Documentation
+
+Lihat folder [`docs`](./docs):
+
+- [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
+- [`docs/providers.md`](./docs/providers.md)
+- [`docs/cli.md`](./docs/cli.md)
+
+## Development
 
 Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
 

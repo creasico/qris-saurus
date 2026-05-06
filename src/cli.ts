@@ -1,16 +1,23 @@
 #!/usr/bin/env bun
 
+import { readFile } from "node:fs/promises";
+import { stdin as inputStream } from "node:process";
 import { detectProvider, makeDynamic, parse, renderQrToFile, validate } from "./index";
 
 function printHelp(): void {
   console.log(`qris-saurus CLI
 
 Usage:
-  qris-saurus validate <qris>
-  qris-saurus parse <qris>
-  qris-saurus detect <qris>
-  qris-saurus dynamic <qris> --amount <number> [--merchant-ref <text>] [--terminal-label <text>]
-  qris-saurus render <qris> --output <file.png> [--width <number>] [--margin <number>]
+  qris-saurus validate [<qris>] [--input-file <file>]
+  qris-saurus parse [<qris>] [--input-file <file>]
+  qris-saurus detect [<qris>] [--input-file <file>]
+  qris-saurus dynamic [<qris>] --amount <number> [--merchant-ref <text>] [--terminal-label <text>] [--input-file <file>]
+  qris-saurus render [<qris>] --output <file.png> [--width <number>] [--margin <number>] [--input-file <file>]
+
+Input priority:
+  1. positional <qris>
+  2. --input-file <file>
+  3. stdin pipe
 `);
 }
 
@@ -31,17 +38,49 @@ function requireValue(value: string | undefined, message: string): string {
   return value;
 }
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of inputStream) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+
+  return Buffer.concat(chunks).toString("utf8").trim();
+}
+
+async function resolveInput(positionalInput: string | undefined, args: string[]): Promise<string> {
+  if (positionalInput) {
+    return positionalInput.trim();
+  }
+
+  const inputFile = readFlag(args, "--input-file");
+  if (inputFile) {
+    const content = await readFile(inputFile, "utf8");
+    return content.trim();
+  }
+
+  if (!inputStream.isTTY) {
+    const piped = await readStdin();
+    if (piped) {
+      return piped;
+    }
+  }
+
+  throw new Error("QRIS input is required via argument, --input-file, or stdin");
+}
+
 async function main(): Promise<void> {
-  const [command, input, ...rest] = process.argv.slice(2);
+  const [command, ...args] = process.argv.slice(2);
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
     return;
   }
 
-  if (!input) {
-    throw new Error("QRIS input is required");
-  }
+  const maybeInput = args[0];
+  const positionalInput = maybeInput && !maybeInput.startsWith("--") ? maybeInput : undefined;
+  const flagArgs = positionalInput ? args.slice(1) : args;
+  const input = await resolveInput(positionalInput, flagArgs);
 
   switch (command) {
     case "validate": {
@@ -58,9 +97,9 @@ async function main(): Promise<void> {
       return;
     }
     case "dynamic": {
-      const amount = Number.parseFloat(requireValue(readFlag(rest, "--amount"), "--amount is required"));
-      const merchantRef = readFlag(rest, "--merchant-ref");
-      const terminalLabel = readFlag(rest, "--terminal-label");
+      const amount = Number.parseFloat(requireValue(readFlag(flagArgs, "--amount"), "--amount is required"));
+      const merchantRef = readFlag(flagArgs, "--merchant-ref");
+      const terminalLabel = readFlag(flagArgs, "--terminal-label");
 
       const options: {
         amount: number;
@@ -82,9 +121,9 @@ async function main(): Promise<void> {
       return;
     }
     case "render": {
-      const output = requireValue(readFlag(rest, "--output"), "--output is required");
-      const width = readFlag(rest, "--width");
-      const margin = readFlag(rest, "--margin");
+      const output = requireValue(readFlag(flagArgs, "--output"), "--output is required");
+      const width = readFlag(flagArgs, "--width");
+      const margin = readFlag(flagArgs, "--margin");
 
       const renderOptions: {
         width?: number;
