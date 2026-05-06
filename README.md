@@ -1,6 +1,15 @@
+<div align="center">
+
 # qris-saurus
 
+[![npm version](https://img.shields.io/npm/v/qris-saurus?style=flat-square&color=blue)](https://npmjs.com/package/qris-saurus)
+[![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![ci status](https://img.shields.io/github/actions/workflow/status/creasico/qris-saurus/ci.yml?branch=main&style=flat-square)](https://github.com/creasico/qris-saurus/actions)
+[![bun](https://img.shields.io/badge/bun-1.3.13+-512e15?style=flat-square&logo=bun)](https://bun.sh)
+
 Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRIS statis menjadi QRIS dinamis.
+
+</div>
 
 ## Apa itu QRIS?
 
