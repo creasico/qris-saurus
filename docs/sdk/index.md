@@ -192,12 +192,12 @@ qris-saurus/
 │   │   ├── gopay.ts
 │   │   ├── midtrans.ts
 │   │   ├── xendit.ts
-    │   ├── duitku.ts
-    │   └── adapters/
-    │       ├── types.ts          ← config & result types
-    │       ├── midtrans.ts       ← MidtransAdapter + midtransAdapter
-    │       ├── xendit.ts         ← XenditAdapter + xenditAdapter
-    │       └── duitku.ts         ← DuitkuAdapter + duitkuAdapter
+│   │   ├── duitku.ts
+│   │   └── adapters/
+│   │       ├── types.ts          ← MidtransConfig, XenditConfig, DuitkuConfig
+│   │       ├── midtrans.ts       ← MidtransAdapter + midtransAdapter
+│   │       ├── xendit.ts         ← XenditAdapter + xenditAdapter
+│   │       └── duitku.ts         ← DuitkuAdapter + duitkuAdapter
 │   ├── transform/
 │   │   ├── static-to-dynamic.ts  ← transformasi utama
 │   │   └── normalizer.ts
@@ -212,7 +212,7 @@ qris-saurus/
 │       ├── index.md              ← dokumen ini
 │       ├── api.md                ← full API reference
 │       ├── workflow.md           ← end-to-end workflow guide
-│       └── gateway.md            ← gateway integration roadmap
+│       └── gateway.md            ← gateway adapters & cek status pembayaran
 └── tests/
     ├── core/
     ├── providers/
@@ -230,13 +230,6 @@ qris-saurus/
 | [api.md](./api.md)                       | Referensi lengkap semua fungsi dan tipe yang diekspor               |
 | [workflow.md](./workflow.md)             | Panduan alur end-to-end untuk berbagai use case                     |
 | [gateway.md](./gateway.md)               | Penggunaan adapter Midtrans, Xendit, Duitku + cek status pembayaran |
-| [../architecture.md](../architecture.md) | Desain internal library (core engine + provider layer)              |
-| [../qris-dynamic.md](../qris-dynamic.md) | Teknis QRIS dinamis dan TLV tag yang terlibat                       |
-| [../providers.md](../providers.md)       | Catatan khusus per provider                                         |
-| [../cli.md](../cli.md)                   | Panduan penggunaan CLI                                              |
-| [api.md](./api.md)                       | Referensi lengkap semua fungsi dan tipe yang diekspor               |
-| [workflow.md](./workflow.md)             | Panduan alur end-to-end untuk berbagai use case                     |
-| [gateway.md](./gateway.md)               | Arsitektur integrasi API gateway dan roadmap provider               |
 | [../architecture.md](../architecture.md) | Desain internal library (core engine + provider layer)              |
 | [../qris-dynamic.md](../qris-dynamic.md) | Teknis QRIS dinamis dan TLV tag yang terlibat                       |
 | [../providers.md](../providers.md)       | Catatan khusus per provider                                         |

@@ -14,18 +14,24 @@
 
 ## Midtrans
 
-- ditandai sebagai kandidat kuat untuk integrasi API di fase berikutnya
-- tetap mendukung local QRIS transformation untuk payload yang sudah ada
+- dideteksi dari merchant account identifier yang mengandung `midtrans`
+- mendukung local QRIS transformation untuk payload yang sudah ada
+- API adapter tersedia: `midtransAdapter.createDynamicQr()` dan `midtransAdapter.checkPaymentStatus()`
+- GoPay bisa dijangkau via Midtrans sebagai acquirer
 
 ## Xendit
 
-- ditandai sebagai kandidat kuat untuk integrasi API di fase berikutnya
-- tetap mendukung local QRIS transformation untuk payload yang sudah ada
+- dideteksi dari merchant account identifier yang mengandung `xendit`
+- mendukung local QRIS transformation untuk payload yang sudah ada
+- API adapter tersedia: `xenditAdapter.createDynamicQr()` dan `xenditAdapter.checkPaymentStatus()`
+- satu integrasi mendukung semua e-wallet dan mobile banking yang terhubung ke QRIS
 
 ## Duitku
 
-- ditandai sebagai kandidat kuat untuk integrasi API di fase berikutnya
-- tetap mendukung local QRIS transformation untuk payload yang sudah ada
+- dideteksi dari merchant account identifier yang mengandung `duitku`
+- mendukung local QRIS transformation untuk payload yang sudah ada
+- API adapter tersedia: `duitkuAdapter.createDynamicQr()` dan `duitkuAdapter.checkPaymentStatus()`
+- signature menggunakan MD5: `merchantCode + amount + orderId + merchantKey`
 
 ## Detection strategy
 

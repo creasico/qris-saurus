@@ -49,22 +49,26 @@ Lapisan ini bertanggung jawab untuk:
 
 - deteksi provider berdasarkan merchant account info
 - menyimpan metadata/caveat provider
-- menyiapkan fondasi integrasi API provider di fase berikutnya
+- menyediakan adapter untuk local transform dan gateway API
 
 Komponen utamanya:
 
 - `src/providers/base.ts`
 - `src/providers/registry.ts`
 - `src/providers/*.ts`
+- `src/providers/adapters/types.ts`
+- `src/providers/adapters/midtrans.ts`
+- `src/providers/adapters/xendit.ts`
+- `src/providers/adapters/duitku.ts`
 
 ## Hubungan dengan gateway
 
 Penting untuk dibedakan:
 
-- **local payload transformation**: bekerja pada string QRIS yang sudah ada
-- **gateway QR generation**: meminta QR baru langsung ke Midtrans/Xendit/Duitku atau provider lain
+- **local payload transformation**: bekerja pada string QRIS yang sudah ada, tanpa koneksi internet, sync — via `staticToDynamic()` / `makeDynamic()`
+- **gateway QR generation**: meminta QR baru langsung ke Midtrans/Xendit/Duitku, async — via `midtransAdapter`, `xenditAdapter`, `duitkuAdapter`
 
-`qris-saurus` saat ini kuat di area pertama, dan baru menyiapkan fondasi untuk area kedua.
+Kedua pendekatan ini tersedia dan bisa dipilih sesuai kebutuhan. Lihat [docs/sdk/gateway.md](./sdk/gateway.md) untuk panduan kapan memakai masing-masing.
 
 ## Design principles
 

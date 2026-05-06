@@ -89,13 +89,19 @@ Gateway API lebih cocok bila:
 - butuh expiry time, callback, payment status, atau reconciliation dari gateway
 - butuh jaminan bahwa QR tersebut memang terikat ke transaksi pada sistem gateway
 
-## Scope library saat ini
+## Scope library ini
 
-Phase pertama memprioritaskan:
+`qris-saurus` mencakup dua pendekatan:
+
+**Local transform** (tanpa internet, sync):
 - parser TLV
-- validator
-- CRC verifier/generator
+- validator & CRC verifier/generator
 - static-to-dynamic transformation
-- provider detection dasar
+- provider detection
 
-Integrasi API Midtrans, Xendit, dan Duitku adalah fase berikutnya.
+**Gateway API adapters** (async, butuh server key):
+- Midtrans: `midtransAdapter.createDynamicQr()` + `checkPaymentStatus()`
+- Xendit: `xenditAdapter.createDynamicQr()` + `checkPaymentStatus()`
+- Duitku: `duitkuAdapter.createDynamicQr()` + `checkPaymentStatus()`
+
+Lihat [docs/sdk/gateway.md](./sdk/gateway.md) untuk panduan lengkap kapan memakai local transform vs gateway API.
