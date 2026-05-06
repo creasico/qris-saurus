@@ -1,5 +1,7 @@
 # Provider Notes
 
+[English](./en/providers.md) | Indonesian
+
 ## ShopeePay
 
 - dideteksi dari merchant account identifier yang mengandung `shopee`

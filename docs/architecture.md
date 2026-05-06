@@ -1,5 +1,7 @@
 # Architecture
 
+[English](./en/architecture.md) | Indonesian
+
 `qris-saurus` dibagi menjadi dua lapisan utama.
 
 ## 1. Core QRIS engine

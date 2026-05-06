@@ -13,6 +13,8 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 
 </div>
 
+[English](./README.en.md) | Indonesian
+
 ## Apa itu QRIS?
 
 QRIS adalah standar QR payment di Indonesia yang menyatukan banyak metode pembayaran di bawah satu format QR. Secara teknis, payload QRIS adalah string **TLV** (`Tag-Length-Value`) berbasis spesifikasi EMVCo. Setiap segmen punya:

@@ -1,5 +1,7 @@
 # API Reference
 
+[English](../en/sdk/api.md) | Indonesian
+
 Semua export berasal dari entry point utama:
 
 ```ts

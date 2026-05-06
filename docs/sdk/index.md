@@ -1,5 +1,7 @@
 # qris-saurus SDK
 
+[English](../en/sdk/index.md) | Indonesian
+
 Bun/TypeScript library untuk mengubah QRIS statis menjadi dinamis — dengan dukungan deteksi provider, validasi CRC, dan rendering QR image.
 
 ## Daftar isi

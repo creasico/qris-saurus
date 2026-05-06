@@ -1,8 +1,8 @@
 # CLI Usage
 
-[English](./en/cli.md) | Indonesian
+English | [Indonesian](../cli.md)
 
-`qris-saurus` menyediakan CLI sederhana untuk inspeksi dan transformasi payload QRIS.
+`qris-saurus` provides a simple CLI for inspecting and transforming QRIS payloads.
 
 ## Build
 
@@ -10,17 +10,17 @@
 bun run build
 ```
 
-Setelah build, file CLI ada di `dist/cli.js`.
+After building, the CLI file is available at `dist/cli.js`.
 
 ## Input modes
 
-CLI menerima payload QRIS dari tiga sumber:
+The CLI accepts QRIS payloads from three sources:
 
-1. argumen langsung
+1. direct argument
 2. `--input-file <file>`
 3. stdin / pipe
 
-Prioritasnya adalah argumen langsung, lalu file, lalu stdin.
+The priority is direct argument first, then file, then stdin.
 
 ## Commands
 
@@ -38,7 +38,7 @@ bun run dist/cli.js validate --input-file ./payload.txt
 cat ./payload.txt | bun run dist/cli.js validate
 ```
 
-Output berupa JSON:
+The output is JSON:
 
 ```json
 {
@@ -57,7 +57,7 @@ bun run dist/cli.js parse "<QRIS_PAYLOAD>"
 cat ./payload.txt | bun run dist/cli.js parse
 ```
 
-Output berupa struktur TLV hasil parsing.
+The output is the parsed TLV structure.
 
 ### Detect provider
 
@@ -69,7 +69,7 @@ bun run dist/cli.js detect "<QRIS_PAYLOAD>"
 bun run dist/cli.js detect --input-file ./payload.txt
 ```
 
-Jika provider dikenali, output berisi metadata provider.
+If the provider is recognized, the output contains provider metadata.
 
 ### Convert to dynamic
 
@@ -81,11 +81,11 @@ bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-0
 cat ./payload.txt | bun run dist/cli.js dynamic --amount 12500 --merchant-ref INV-001
 ```
 
-Output berupa payload QRIS baru yang sudah:
-- memakai point of initiation dynamic
-- membawa nominal transaksi
-- membawa additional data bila diberikan
-- memiliki CRC baru yang valid
+The output is a new QRIS payload that:
+- uses the dynamic point of initiation method
+- carries the transaction amount
+- carries additional data when provided
+- has a newly calculated valid CRC
 
 ### Render PNG
 
@@ -97,13 +97,13 @@ bun run dist/cli.js render "<QRIS_PAYLOAD>" --output ./qris.png --width 320 --ma
 cat ./payload.txt | bun run dist/cli.js render --output ./qris.png
 ```
 
-Output command ini adalah path file PNG yang berhasil dibuat.
+The output of this command is the generated PNG file path.
 
 ## Example workflow
 
-1. ambil payload QRIS statis
-2. jalankan `validate`
-3. jalankan `detect`
-4. jalankan `dynamic`
-5. ambil payload hasil lalu render jadi image, atau render payload langsung dengan `render`
-6. gunakan file PNG di UI, POS, invoice, atau sistem internal Anda
+1. get a static QRIS payload
+2. run `validate`
+3. run `detect`
+4. run `dynamic`
+5. take the resulting payload and render it to an image, or render the payload directly with `render`
+6. use the PNG file in your UI, POS, invoice, or internal system

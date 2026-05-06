@@ -1,5 +1,7 @@
 # QRIS Dynamic Notes
 
+[English](./en/qris-dynamic.md) | Indonesian
+
 ## TLV structure
 
 Payload QRIS menggunakan format **Tag-Length-Value**.
