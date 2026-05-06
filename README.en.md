@@ -89,6 +89,22 @@ At the current stage, the library's main focus is **local transformation** from 
 
 ## Install
 
+Install with your preferred package manager:
+
+```bash
+npm install qris-saurus
+```
+
+```bash
+pnpm add qris-saurus
+```
+
+```bash
+bun add qris-saurus
+```
+
+If you are working on this repository locally:
+
 ```bash
 bun install
 ```

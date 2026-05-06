@@ -151,6 +151,22 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 
 ## Install
 
+Install from your preferred package manager:
+
+```bash
+npm install qris-saurus
+```
+
+```bash
+pnpm add qris-saurus
+```
+
+```bash
+bun add qris-saurus
+```
+
+If you are working on this repository locally:
+
 ```bash
 bun install
 ```
