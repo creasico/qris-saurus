@@ -7,7 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "qris-saurus": "./dist/cli.js"
+    "qris-saurus": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -49,5 +49,18 @@
   ],
   "dependencies": {
     "qrcode": "^1.5.4"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/creasico/qris-saurus.git"
+  },
+  "author": "Syakirin Amin",
+  "bugs": {
+    "url": "https://github.com/creasico/qris-saurus/issues"
+  },
+  "homepage": "https://github.com/creasico/qris-saurus#readme"
 }
