@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import { pollUntilSettled, type PollOptions } from "./poller";
 import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig } from "./types";
 
 // statusCode dari Duitku: "00" lunas, "01" pending, "02" dibatalkan
@@ -126,6 +127,33 @@ export class DuitkuAdapter {
       ...(amount !== undefined && { amount }),
       raw: data,
     };
+  }
+
+  /**
+   * Verify a Duitku webhook callback.
+   * Duitku signs callbacks as: MD5(merchantCode + amount + merchantOrderId + merchantKey)
+   * Compare against the `signature` field in the callback payload.
+   */
+  verifyWebhook(
+    payload: Record<string, unknown>,
+    config: Pick<DuitkuConfig, "merchantCode" | "merchantKey">,
+  ): boolean {
+    const merchantCode = String(payload.merchantCode ?? "");
+    const amount = String(payload.amount ?? "");
+    const merchantOrderId = String(payload.merchantOrderId ?? "");
+    const expected = md5(merchantCode + amount + merchantOrderId + config.merchantKey);
+    return typeof payload.signature === "string" && payload.signature === expected;
+  }
+
+  /**
+   * Poll payment status until a terminal state is reached or timeout elapses.
+   */
+  async pollPaymentStatus(
+    orderId: string,
+    config: DuitkuConfig,
+    options?: PollOptions,
+  ): Promise<PaymentStatusResult> {
+    return pollUntilSettled(() => this.checkPaymentStatus(orderId, config), options);
   }
 }
 

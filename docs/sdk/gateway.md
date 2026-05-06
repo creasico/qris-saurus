@@ -306,6 +306,192 @@ const serverKey = "SB-Mid-server-xxxxx"; // JANGAN ini di frontend
 
 ---
 
+## Verifikasi webhook
+
+Setiap adapter menyediakan method `verifyWebhook` untuk memvalidasi bahwa notifikasi masuk benar-benar berasal dari gateway — bukan dari pihak yang tidak dikenal.
+
+### Midtrans
+
+Midtrans menandatangani payload webhook dengan `signature_key` yang dibentuk dari:
+
+```
+SHA512(orderId + statusCode + grossAmount + serverKey)
+```
+
+```ts
+import { midtransAdapter } from "qris-saurus";
+
+// Di handler webhook Express/Hono/dll:
+app.post("/webhook/midtrans", async (req, res) => {
+  const payload = req.body as Record<string, unknown>;
+
+  const valid = midtransAdapter.verifyWebhook(payload, {
+    serverKey: process.env.MIDTRANS_SERVER_KEY!,
+  });
+
+  if (!valid) {
+    res.status(400).send("Invalid signature");
+    return;
+  }
+
+  if (payload.transaction_status === "settlement") {
+    // catat pembayaran berhasil
+  }
+  res.sendStatus(200);
+});
+```
+
+### Xendit
+
+Xendit mengirim header `x-callback-token` yang nilainya dikonfigurasi di dashboard Xendit. Lookup header bersifat case-insensitive.
+
+```ts
+import { xenditAdapter } from "qris-saurus";
+
+app.post("/webhook/xendit", async (req, res) => {
+  const valid = xenditAdapter.verifyWebhook(
+    req.headers as Record<string, string>,
+    process.env.XENDIT_CALLBACK_TOKEN!,
+  );
+
+  if (!valid) {
+    res.status(400).send("Invalid callback token");
+    return;
+  }
+
+  const body = req.body;
+  if (body.status === "SUCCEEDED") {
+    // catat pembayaran berhasil
+  }
+  res.sendStatus(200);
+});
+```
+
+### Duitku
+
+Duitku menandatangani callback dengan `signature` yang dibentuk dari:
+
+```
+MD5(merchantCode + amount + merchantOrderId + merchantKey)
+```
+
+```ts
+import { duitkuAdapter } from "qris-saurus";
+
+app.post("/webhook/duitku", async (req, res) => {
+  const payload = req.body as Record<string, unknown>;
+
+  const valid = duitkuAdapter.verifyWebhook(payload, {
+    merchantCode: process.env.DUITKU_CODE!,
+    merchantKey: process.env.DUITKU_KEY!,
+  });
+
+  if (!valid) {
+    res.status(400).send("Invalid signature");
+    return;
+  }
+
+  if (payload.resultCode === "00") {
+    // catat pembayaran berhasil
+  }
+  res.sendStatus(200);
+});
+```
+
+---
+
+## Polling status pembayaran
+
+Jika tidak ingin atau tidak bisa menerima webhook, gunakan `pollPaymentStatus` untuk polling status secara berkala hingga terminal.
+
+Status terminal: **paid**, **expired**, **failed**, **cancelled**.
+
+```ts
+import { midtransAdapter } from "qris-saurus";
+
+const result = await midtransAdapter.pollPaymentStatus(
+  "INV-2026-001",
+  { serverKey: process.env.MIDTRANS_SERVER_KEY!, sandbox: true },
+  {
+    intervalMs: 3_000,    // cek setiap 3 detik (default)
+    timeoutMs:  60_000,   // batas waktu 1 menit (default: 5 menit)
+  },
+);
+
+console.log(result.status); // "paid" | "expired" | "failed" | "cancelled"
+```
+
+Xendit dan Duitku memiliki method yang identik:
+
+```ts
+const xenditResult = await xenditAdapter.pollPaymentStatus(
+  xenditQr.gatewayOrderId,
+  { secretKey: process.env.XENDIT_SECRET_KEY! },
+);
+
+const duitkuResult = await duitkuAdapter.pollPaymentStatus(
+  "INV-2026-001",
+  { merchantCode: process.env.DUITKU_CODE!, merchantKey: process.env.DUITKU_KEY! },
+);
+```
+
+Untuk kasus kustom (mis. provider sendiri), gunakan `pollUntilSettled` secara langsung:
+
+```ts
+import { pollUntilSettled } from "qris-saurus";
+
+const result = await pollUntilSettled(
+  () => myAdapter.checkPaymentStatus(orderId, config),
+  { intervalMs: 5_000, timeoutMs: 300_000 },
+);
+```
+
+---
+
+## B2B OAuth 2.0 token management
+
+Beberapa gateway menggunakan OAuth 2.0 client credentials flow dengan akses token yang expired secara berkala. `TokenManager` meng-cache token dan me-refresh-nya secara otomatis sebelum kedaluwarsa.
+
+```ts
+import { tokenManager, TokenManager } from "qris-saurus";
+
+// Gunakan singleton bawaan (direkomendasikan):
+const token = await tokenManager.getToken("my-provider", async () => {
+  const res = await fetch("https://provider.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: process.env.CLIENT_ID!,
+      client_secret: process.env.CLIENT_SECRET!,
+    }),
+  });
+  const data = await res.json() as { access_token: string; expires_in: number };
+  return { accessToken: data.access_token, expiresInSeconds: data.expires_in };
+});
+
+// Atau buat instance sendiri dengan buffer custom (default: 60 detik):
+const manager = new TokenManager(120); // refresh 120 detik sebelum expired
+```
+
+Jika gateway mengembalikan `401 Unauthorized`, invalidate token agar di-refresh pada request berikutnya:
+
+```ts
+try {
+  const res = await fetch("https://provider.com/api/...", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) {
+    tokenManager.invalidate("my-provider");
+    throw new Error("Token expired, retry on next request");
+  }
+} catch (err) {
+  throw err;
+}
+```
+
+---
+
 ## Referensi API resmi
 
 | Gateway  | Dokumen API                                          |

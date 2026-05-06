@@ -1,4 +1,5 @@
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import { pollUntilSettled, type PollOptions } from "./poller";
 import type { ApiQrCreateOptions, ApiQrResult, XenditConfig } from "./types";
 
 const BASE_URL = "https://api.xendit.co";
@@ -135,6 +136,38 @@ export class XenditAdapter {
       ...(amount !== undefined && { amount }),
       raw: data,
     };
+  }
+
+  /**
+   * Verify a Xendit webhook callback.
+   * Xendit sends a `x-callback-token` header you configure in the dashboard.
+   * Pass in the request headers and your configured callback token.
+   */
+  verifyWebhook(
+    headers: Record<string, string | string[] | undefined>,
+    callbackToken: string,
+  ): boolean {
+    if (!callbackToken) return false;
+    const headerKey = Object.keys(headers).find(
+      (k) => k.toLowerCase() === "x-callback-token",
+    );
+    const received = headerKey ? String(headers[headerKey] ?? "") : "";
+    return received === callbackToken;
+  }
+
+  /**
+   * Poll payment status until a terminal state is reached or timeout elapses.
+   * Use `gatewayOrderId` returned from `createDynamicQr`.
+   */
+  async pollPaymentStatus(
+    gatewayOrderId: string,
+    config: XenditConfig,
+    options?: PollOptions,
+  ): Promise<PaymentStatusResult> {
+    return pollUntilSettled(
+      () => this.checkPaymentStatus(gatewayOrderId, config),
+      options,
+    );
   }
 }
 

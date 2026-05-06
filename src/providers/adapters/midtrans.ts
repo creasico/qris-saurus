@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import { pollUntilSettled, type PollOptions } from "./poller";
 import type { ApiQrCreateOptions, ApiQrResult, MidtransConfig } from "./types";
 
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -111,6 +113,39 @@ export class MidtransAdapter {
       ...(paidAt !== undefined && { paidAt }),
       raw: data,
     };
+  }
+
+  /**
+   * Verify a Midtrans webhook notification.
+   * Midtrans signs webhooks as: SHA512(orderId + statusCode + grossAmount + serverKey)
+   * Compare against the `signature_key` field in the webhook payload.
+   */
+  verifyWebhook(
+    payload: Record<string, unknown>,
+    config: Pick<MidtransConfig, "serverKey">,
+  ): boolean {
+    const orderId = String(payload.order_id ?? "");
+    const statusCode = String(payload.status_code ?? "");
+    const grossAmount = String(payload.gross_amount ?? "");
+    const expected = createHash("sha512")
+      .update(orderId + statusCode + grossAmount + config.serverKey)
+      .digest("hex");
+    return (
+      typeof payload.signature_key === "string" &&
+      payload.signature_key === expected
+    );
+  }
+
+  /**
+   * Poll payment status until a terminal state is reached or timeout elapses.
+   * Terminal states: paid, expired, failed, cancelled.
+   */
+  async pollPaymentStatus(
+    orderId: string,
+    config: MidtransConfig,
+    options?: PollOptions,
+  ): Promise<PaymentStatusResult> {
+    return pollUntilSettled(() => this.checkPaymentStatus(orderId, config), options);
   }
 }
 
