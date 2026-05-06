@@ -6,6 +6,9 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "qris-saurus": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -19,7 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun --format esm",
+    "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },

@@ -2,6 +2,71 @@
 
 Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRIS statis menjadi QRIS dinamis.
 
+## Apa itu QRIS?
+
+QRIS adalah standar QR payment di Indonesia yang menyatukan banyak metode pembayaran di bawah satu format QR. Secara teknis, payload QRIS adalah string **TLV** (`Tag-Length-Value`) berbasis spesifikasi EMVCo. Setiap segmen punya:
+
+- `Tag`: identitas field, misalnya `54` untuk amount
+- `Length`: panjang isi field
+- `Value`: isi field itu sendiri
+
+Contoh sederhananya:
+
+```text
+540812500.00
+```
+
+Artinya:
+- `54` = transaction amount
+- `08` = panjang value
+- `12500.00` = nilai amount
+
+## Bagaimana QRIS bekerja?
+
+Secara umum, alurnya seperti ini:
+
+1. **Merchant memiliki QRIS payload**
+   - bisa QRIS statis dari acquirer/gateway
+   - bisa QRIS dinamis yang sudah digenerate gateway
+2. **Customer scan QR** dengan app seperti ShopeePay, GoPay, mobile banking, atau aplikasi lain yang mendukung QRIS
+3. **App membaca payload TLV** dan menampilkan informasi merchant/transaksi
+4. **Switching dan routing** dilakukan oleh ekosistem pembayaran sesuai identifier merchant dan acquirer
+5. **Issuer memproses pembayaran**
+6. **Merchant menerima notifikasi/settlement** dari gateway atau acquirer
+
+Library ini bekerja di lapisan **payload construction/manipulation**, bukan di lapisan settlement atau switching network.
+
+## Static vs dynamic QRIS
+
+### QRIS statis
+Biasanya dipakai untuk merchant display tetap. Nominal tidak tertanam di payload, sehingga customer mengisi nominal sendiri atau nominal ditentukan dari flow di sisi aplikasi pembayaran.
+
+Ciri umumnya:
+- point of initiation method `11`
+- bisa dipakai berkali-kali
+- tidak spesifik ke satu transaksi
+
+### QRIS dinamis
+Dibuat untuk transaksi tertentu. Nominal dan data tambahan bisa disematkan ke payload.
+
+Ciri umumnya:
+- point of initiation method `12`
+- nominal transaksi ada di tag `54`
+- dapat membawa reference tambahan di tag `62`
+- lebih cocok untuk checkout, invoice, POS, dan order-based payments
+
+## Bagaimana qris-saurus bekerja?
+
+`qris-saurus` mengikuti alur berikut:
+
+1. **parse** payload QRIS ke struktur TLV
+2. **validate** struktur dasar dan CRC
+3. **detectProvider** bila identifier provider dikenali
+4. **transform** QRIS statis menjadi dinamis
+5. **serialize** payload baru dan hitung ulang CRC
+
+Untuk fase sekarang, fokus utama library ini adalah **transformasi lokal** dari QRIS statis menjadi QRIS dinamis yang valid. Integrasi API gateway seperti Midtrans/Xendit/Duitku bisa ditambahkan kemudian sebagai layer terpisah.
+
 ## Goals
 
 - Mengubah QRIS statis menjadi QRIS dinamis secara lokal
@@ -35,6 +100,42 @@ console.log(result.provider);
 console.log(validate(dynamicQris));
 ```
 
+## CLI
+
+Setelah build, CLI tersedia sebagai `qris-saurus`.
+
+### Build CLI
+
+```bash
+bun run build
+```
+
+### Validate payload
+
+```bash
+bun run dist/cli.js validate "<QRIS_PAYLOAD>"
+```
+
+### Parse payload
+
+```bash
+bun run dist/cli.js parse "<QRIS_PAYLOAD>"
+```
+
+### Detect provider
+
+```bash
+bun run dist/cli.js detect "<QRIS_PAYLOAD>"
+```
+
+### Convert static QRIS to dynamic QRIS
+
+```bash
+bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-001 --terminal-label POS-A
+```
+
+Output command `dynamic` adalah string QRIS baru yang siap dipakai untuk dirender menjadi QR image.
+
 ## Available API
 
 - `parse(qrisString)`
@@ -63,3 +164,4 @@ Lihat folder [`docs`](./docs):
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/qris-dynamic.md`](./docs/qris-dynamic.md)
 - [`docs/providers.md`](./docs/providers.md)
+- [`docs/cli.md`](./docs/cli.md)
