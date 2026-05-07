@@ -28,10 +28,7 @@ const BUILTIN_ADAPTERS: Record<string, () => GatewayAdapter> = {
   duitku: () => new DuitkuAdapter(),
 };
 
-/** Custom adapters registered via Gateway.registerProvider(). */
-const customAdapters = new Map<string, () => GatewayAdapter>();
-
-function createAdapter(provider: string): GatewayAdapter {
+function createAdapter(provider: string, customAdapters: Map<string, () => GatewayAdapter>): GatewayAdapter {
   const factory = BUILTIN_ADAPTERS[provider] ?? customAdapters.get(provider);
   if (!factory) {
     throw new ConfigurationError(
@@ -41,7 +38,7 @@ function createAdapter(provider: string): GatewayAdapter {
   return factory();
 }
 
-function resolveConfig(config: GatewayConfig): GatewayConfig {
+function resolveConfig(config: GatewayConfig, customAdapters: Map<string, () => GatewayAdapter>): GatewayConfig {
   const env = typeof process !== "undefined" ? process.env : {};
 
   if (config.provider === "midtrans") {
@@ -82,41 +79,17 @@ function resolveConfig(config: GatewayConfig): GatewayConfig {
     return { ...config, merchantCode: code, merchantKey: key, sandbox };
   }
 
+  if (customAdapters.has((config as any).provider)) {
+    return config;
+  }
+
   throw new ConfigurationError(`Unknown provider: ${(config as GatewayConfig).provider}`);
 }
 
-/**
- * Build the extra options for createDynamicQr — currently only Midtrans
- * uses notification header overrides, and Duitku merges returnUrl/callbackUrl.
- * The adapter receives these via the `extra` parameter.
- */
-function buildChargeConfig(
-  config: unknown,
-  options: ChargeOptions,
-): unknown {
-  const cfg = config as Record<string, unknown>;
-  if (cfg.provider === "duitku") {
-    return {
-      ...cfg,
-      ...(options.returnUrl ? { returnUrl: options.returnUrl } : {}),
-      ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
-    };
-  }
-  return config;
-}
-
-function buildNotificationExtra(
-  config: unknown,
-  options: ChargeOptions,
-): MidtransNotificationOptions | undefined {
-  const cfg = config as Record<string, unknown>;
-  if (cfg.provider === "midtrans" && options.notificationUrl) {
-    return { overrideNotificationUrl: options.notificationUrl };
-  }
-  return undefined;
-}
-
 class Gateway {
+  /** Custom adapters registered via Gateway.registerProvider(). */
+  private static _customAdapters = new Map<string, () => GatewayAdapter>();
+
   private _provider: string | null = null;
   private _config: unknown = null;
   private _adapter: GatewayAdapter | null = null;
@@ -134,14 +107,14 @@ class Gateway {
         `Cannot override built-in provider "${name}". Choose a different name.`,
       );
     }
-    customAdapters.set(name, factory);
+    Gateway._customAdapters.set(name, factory);
   }
 
   /**
    * Remove a previously registered custom provider.
    */
   static unregisterProvider(name: string): boolean {
-    return customAdapters.delete(name);
+    return Gateway._customAdapters.delete(name);
   }
 
   configure(config: GatewayConfig): void {
@@ -151,9 +124,9 @@ class Gateway {
       );
     }
 
-    this._config = resolveConfig(config);
+    this._config = resolveConfig(config, Gateway._customAdapters);
     this._provider = config.provider;
-    this._adapter = createAdapter(config.provider);
+    this._adapter = createAdapter(config.provider, Gateway._customAdapters);
   }
 
   /**
@@ -186,8 +159,18 @@ class Gateway {
     this._adapter = null;
   }
 
+  private createAdapter(provider: string): GatewayAdapter {
+    const factory = BUILTIN_ADAPTERS[provider] ?? Gateway._customAdapters.get(provider);
+    if (!factory) {
+      throw new ConfigurationError(
+        `Unknown provider: "${provider}". Register it first with Gateway.registerProvider().`,
+      );
+    }
+    return factory();
+  }
+
   private assertConfigured(): { provider: string; config: unknown; adapter: GatewayAdapter } {
-    if (!this._provider || !this._config || !this._adapter) {
+    if (this._provider == null || this._config == null || this._adapter == null) {
       throw new ConfigurationError("Gateway is not configured. Call gateway.configure() first.");
     }
     return {
@@ -195,6 +178,28 @@ class Gateway {
       config: this._config,
       adapter: this._adapter,
     };
+  }
+
+  private buildChargeConfig(config: unknown, options: ChargeOptions): unknown {
+    const cfg = config as Record<string, unknown>;
+    if (this._provider === "duitku") {
+      return {
+        ...cfg,
+        ...(options.returnUrl ? { returnUrl: options.returnUrl } : {}),
+        ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
+      };
+    }
+    return config;
+  }
+
+  private buildNotificationExtra(
+    _config: unknown,
+    options: ChargeOptions,
+  ): MidtransNotificationOptions | undefined {
+    if (this._provider === "midtrans" && options.notificationUrl) {
+      return { overrideNotificationUrl: options.notificationUrl };
+    }
+    return undefined;
   }
 
   async charge(
@@ -211,8 +216,8 @@ class Gateway {
       ...(options.customerEmail ? { customerEmail: options.customerEmail } : {}),
     };
 
-    const mergedConfig = buildChargeConfig(config, options);
-    const extra = buildNotificationExtra(config, options);
+    const mergedConfig = this.buildChargeConfig(config, options);
+    const extra = this.buildNotificationExtra(config, options);
 
     return adapter.createDynamicQr(qrOptions, mergedConfig, extra);
   }
@@ -222,12 +227,6 @@ class Gateway {
     return adapter.checkPaymentStatus(orderId, config);
   }
 
-  /**
-   * Parse and verify an incoming webhook/callback from the configured provider.
-   *
-   * @param payload  The raw webhook body (parsed JSON).
-   * @param headers  Optional HTTP headers — required for Xendit callback token verification.
-   */
   verify(
     payload: unknown,
     headers?: Record<string, string | string[] | undefined>,

@@ -189,13 +189,16 @@ describe("gateway.toDynamic", () => {
 // ─── Provider capability errors ──────────────────────────────────────────────
 
 describe("gateway provider capabilities", () => {
-  test("verify throws ProviderCapabilityError for xendit", () => {
+  test("verify delegates to xendit parseWebhook", () => {
     gateway.configure({ provider: "xendit", secretKey: "xnd_test", callbackToken: "tok-abc" });
     const payload = {
       event: "qr.payment.completed",
       data: { reference_id: "INV-X01", status: "COMPLETED", amount: 50000 },
     };
-    expect(() => gateway.verify(payload, { "x-callback-token": "tok-abc" })).toThrow(ProviderCapabilityError);
+    const result = gateway.verify(payload, { "x-callback-token": "tok-abc" });
+    expect(result.valid).toBe(true);
+    expect(result.orderId).toBe("INV-X01");
+    expect(result.status).toBe("paid");
   });
 
   test("cancel throws ProviderCapabilityError on xendit", async () => {
