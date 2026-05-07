@@ -15,6 +15,8 @@ export interface MidtransNotificationOptions {
 
 export interface XenditConfig {
   secretKey: string;
+  /** Callback verification token from Xendit dashboard. If omitted, webhook verification will return valid: false. */
+  callbackToken?: string;
 }
 
 export interface DuitkuConfig {
@@ -105,6 +107,17 @@ export interface MidtransWebhookParseResult extends PaymentStatusResult {
   transactionId?: string;
   paymentType?: string;
   acquirer?: string;
+}
+
+/**
+ * Unified webhook result returned by all adapters' `parseWebhook()` method.
+ * Provider-specific details are available via `providerMeta`.
+ */
+export interface WebhookResult extends PaymentStatusResult {
+  /** Whether the webhook signature/token is valid. */
+  valid: boolean;
+  /** Provider-specific extras (e.g. fraudStatus, transactionId, acquirer). */
+  providerMeta?: Record<string, unknown>;
 }
 
 export interface RefundOptions {
