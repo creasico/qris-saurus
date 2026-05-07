@@ -395,7 +395,7 @@ describe("Gateway.registerProvider", () => {
     Gateway.registerProvider("testpay", mockFactory);
     try {
       // Configure using the registered provider
-      gateway.configure({ provider: "testpay" as any, apiKey: "test" });
+      gateway.configure({ provider: "testpay", apiKey: "test" } as any);
       const result = gateway.verify({});
       expect(result.valid).toBe(false);
     } finally {

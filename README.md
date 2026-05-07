@@ -361,9 +361,9 @@ Gateway.registerProvider("finpay", () => new FinpayAdapter());
 
 // Sekarang bisa dipakai selayaknya provider bawaan
 gateway.configure({ 
-  provider: "finpay" as any, // custom provider belum ada di tipe GatewayConfig
+  provider: "finpay",
   apiKey: "secret" 
-});
+} as any); // custom provider belum ada di tipe GatewayConfig
 ```
 
 ## CLI

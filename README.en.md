@@ -212,9 +212,9 @@ Gateway.registerProvider("finpay", () => new FinpayAdapter());
 
 // Now it can be used like a built-in provider
 gateway.configure({ 
-  provider: "finpay" as any, // custom provider not yet in GatewayConfig type
+  provider: "finpay",
   apiKey: "secret" 
-});
+} as any); // custom provider not yet in GatewayConfig type
 ```
 
 ## CLI
