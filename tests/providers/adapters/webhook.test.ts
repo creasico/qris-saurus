@@ -71,9 +71,9 @@ describe("midtransAdapter.parseWebhook", () => {
     expect(result.orderId).toBe("INV-002");
     expect(result.status).toBe("paid");
     expect(result.amount).toBe(100000);
-    expect(result.transactionId).toBe("tx-123");
-    expect(result.paymentType).toBe("qris");
-    expect(result.acquirer).toBe("gopay");
+    expect(result.providerMeta?.transactionId).toBe("tx-123");
+    expect(result.providerMeta?.paymentType).toBe("qris");
+    expect(result.providerMeta?.acquirer).toBe("gopay");
     expect(result.paidAt).toBeInstanceOf(Date);
   });
 
@@ -167,5 +167,79 @@ describe("duitkuAdapter.verifyWebhook", () => {
     expect(
       duitkuAdapter.verifyWebhook(validPayload, { ...config, merchantKey: "wrong" }),
     ).toBe(false);
+  });
+});
+
+// ─── Xendit parseWebhook ────────────────────────────────────────────────────
+
+describe("xenditAdapter.parseWebhook", () => {
+  const config = { secretKey: "xnd_test", callbackToken: "my-token" };
+
+  test("returns valid=true with correct callback token", () => {
+    const payload = {
+      event: "qr.payment.completed",
+      data: {
+        reference_id: "INV-X01",
+        status: "COMPLETED",
+        amount: 50000,
+        created: "2026-05-07T10:00:00.000Z",
+      },
+    };
+    const headers = { "x-callback-token": "my-token" };
+    const result = xenditAdapter.parseWebhook(payload, config, headers);
+    expect(result.valid).toBe(true);
+    expect(result.orderId).toBe("INV-X01");
+    expect(result.status).toBe("paid");
+    expect(result.amount).toBe(50000);
+    expect(result.paidAt).toBeInstanceOf(Date);
+  });
+
+  test("returns valid=false when callbackToken is missing from config", () => {
+    const configNoToken = { secretKey: "xnd_test" };
+    const payload = { data: { reference_id: "INV-X02", status: "ACTIVE" } };
+    const result = xenditAdapter.parseWebhook(payload, configNoToken);
+    expect(result.valid).toBe(false);
+    expect(result.orderId).toBe("INV-X02");
+    expect(result.status).toBe("pending");
+  });
+});
+
+// ─── Duitku parseWebhook ────────────────────────────────────────────────────
+
+describe("duitkuAdapter.parseWebhook", () => {
+  const config = {
+    merchantCode: "DS12345",
+    merchantKey: "secret-merchant-key",
+    returnUrl: "https://example.com/return",
+    callbackUrl: "https://example.com/callback",
+  };
+  const validPayload = {
+    merchantCode: "DS12345",
+    amount: "75000",
+    merchantOrderId: "INV-D01",
+    resultCode: "00",
+    signature: "8c9eaf3aea6fd952b49882225ed575ae",
+  };
+
+  test("returns normalized paid result with valid signature", () => {
+    // Fix the merchantOrderId to match the signature fixture
+    const payload = { ...validPayload, merchantOrderId: "INV-001" };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+    expect(result.valid).toBe(true);
+    expect(result.orderId).toBe("INV-001");
+    expect(result.status).toBe("paid");
+    expect(result.amount).toBe(75000);
+  });
+
+  test("returns pending status for statusCode 01", () => {
+    const payload = { ...validPayload, resultCode: "01", merchantOrderId: "INV-001" };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+    expect(result.status).toBe("pending");
+  });
+
+  test("returns valid=false when signature is wrong", () => {
+    const payload = { ...validPayload, signature: "deadbeef", merchantOrderId: "INV-001" };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+    expect(result.valid).toBe(false);
   });
 });

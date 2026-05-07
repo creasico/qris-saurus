@@ -1,10 +1,11 @@
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, XenditConfig } from "./types";
+import type { ApiQrCreateOptions, ApiQrResult, WebhookResult, XenditConfig } from "./types";
 
 const BASE_URL = "https://api.xendit.co";
 
-export class XenditAdapter {
+export class XenditAdapter implements GatewayAdapter {
   private authHeader(secretKey: string): string {
     return "Basic " + btoa(secretKey + ":");
   }
@@ -161,6 +162,48 @@ export class XenditAdapter {
     );
     const received = headerKey ? String(headers[headerKey] ?? "") : "";
     return received === callbackToken;
+  }
+
+  /**
+   * Parse and verify a Xendit webhook notification into a normalised WebhookResult.
+   * Uses the `x-callback-token` header for verification if `callbackToken` is present in config.
+   */
+  parseWebhook(
+    payload: unknown,
+    config: XenditConfig,
+    headers?: Record<string, string | string[] | undefined>,
+  ): WebhookResult {
+    const valid = config.callbackToken && headers
+      ? this.verifyWebhook(headers, config.callbackToken)
+      : false;
+
+    const raw = payload as Record<string, unknown>;
+    const data = (raw.data ?? raw) as Record<string, unknown>;
+
+    const orderId = String(data.reference_id ?? data.id ?? "");
+    const eventType = String(raw.event ?? "").toLowerCase();
+
+    let status: PaymentStatusCode = "pending";
+    const qrStatus = String(data.status ?? "").toUpperCase();
+    if (eventType.includes("paid") || eventType.includes("completed") || qrStatus === "COMPLETED") {
+      status = "paid";
+    } else if (qrStatus === "INACTIVE" || qrStatus === "EXPIRED") {
+      status = "expired";
+    }
+
+    const amount = typeof data.amount === "number" ? data.amount : undefined;
+    const paidAt = status === "paid" && typeof data.created === "string"
+      ? new Date(data.created)
+      : undefined;
+
+    return {
+      valid,
+      orderId,
+      status,
+      ...(amount !== undefined && { amount }),
+      ...(paidAt !== undefined && { paidAt }),
+      raw: payload,
+    };
   }
 
   /**
