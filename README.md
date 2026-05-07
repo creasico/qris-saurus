@@ -15,6 +15,26 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 
 [English](./README.en.md) | Indonesian
 
+## Table of Contents
+
+- [Apa itu QRIS?](#apa-itu-qris)
+- [Bagaimana QRIS bekerja?](#bagaimana-qris-bekerja)
+- [Static vs dynamic QRIS](#static-vs-dynamic-qris)
+- [Bagaimana qris-saurus bekerja?](#bagaimana-qris-saurus-bekerja)
+- [Goals](#goals)
+- [How It Works](#how-it-works)
+- [Install](#install)
+- [Configure Environment](#configure-environment)
+- [Quick start](#quick-start)
+- [Error Handling](#error-handling)
+- [Gateway & Custom Providers](#gateway--custom-providers)
+- [CLI](#cli)
+- [Rendering dari library](#rendering-dari-library)
+- [Available API](#available-api)
+- [CLI input priority](#cli-input-priority)
+- [Development](#development)
+- [Documentation](#documentation)
+
 ## Apa itu QRIS?
 
 QRIS adalah standar QR payment di Indonesia yang menyatukan banyak metode pembayaran di bawah satu format QR. Secara teknis, payload QRIS adalah string **TLV** (`Tag-Length-Value`) berbasis spesifikasi EMVCo. Setiap segmen punya:
@@ -283,6 +303,63 @@ try {
 } catch (err) {
   console.error("Status check error:", err);
 }
+```
+
+## Gateway & Custom Providers
+
+SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu:
+
+```ts
+import { gateway } from "qris-saurus";
+
+// 1. Configure (Otomatis membaca kredensial dari process.env jika tersedia)
+gateway.configure({ provider: "midtrans" }); 
+
+// 2. Gunakan method abstrak tanpa peduli provider yang sedang aktif
+const chargeResult = await gateway.charge("INV-001", 50000);
+const verifyResult = gateway.verify(webhookPayload, headers);
+const statusResult = await gateway.status("INV-001");
+```
+
+### Mendukung Custom Provider (Scaling)
+
+Arsitektur gateway sangat scalable. Kamu bisa dengan mudah membawa provider-mu sendiri (misal Biller lain atau gateway internal) tanpa perlu memodifikasi core library. Cukup implementasikan _interface_ `GatewayAdapter` yang wajib menyertakan 4 operasi inti: `createDynamicQr`, `checkPaymentStatus`, `parseWebhook`, dan `pollPaymentStatus`.
+
+Ada dua pendekatan untuk memasang custom adapter:
+
+**1. `gateway.useAdapter()` (Direct Injection)**
+
+Gunakan cara ini untuk melempar instance adapter langsung ke singleton. Sangat cocok jika kamu membuat instance di module sendiri:
+
+```ts
+import { gateway, type GatewayAdapter } from "qris-saurus";
+
+class FinpayAdapter implements GatewayAdapter {
+  // ...implementasi 4 operasi inti
+}
+
+// Pasang adapter langsung
+gateway.useAdapter("finpay", new FinpayAdapter(), { apiKey: "secret" });
+
+// Langsung bisa dipakai
+await gateway.charge("INV-FIN", 10000); 
+```
+
+**2. `Gateway.registerProvider()` (Factory Registration)**
+
+Gunakan cara ini jika kamu membuat library atau helper yang mendaftarkan provider secara global, sehingga nantinya aplikasi kamu hanya perlu memanggil `gateway.configure()`:
+
+```ts
+import { Gateway, gateway } from "qris-saurus";
+
+// Daftarkan ke factory bawaan SDK
+Gateway.registerProvider("finpay", () => new FinpayAdapter());
+
+// Sekarang bisa dipakai selayaknya provider bawaan
+gateway.configure({ 
+  provider: "finpay" as any, // override type jika strict mode
+  apiKey: "secret" 
+});
 ```
 
 ## CLI
