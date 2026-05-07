@@ -15,6 +15,21 @@ A Bun/TypeScript SDK for parsing, validating, detecting providers, and transform
 
 English | [Indonesian](./README.md)
 
+## Table of Contents
+
+- [What is QRIS?](#what-is-qris)
+- [How does QRIS work?](#how-does-qris-work)
+- [Static vs dynamic QRIS](#static-vs-dynamic-qris)
+- [How does qris-saurus work?](#how-does-qris-saurus-work)
+- [Goals](#goals)
+- [Install](#install)
+- [Configure Environment](#configure-environment)
+- [Quick start](#quick-start)
+- [Error handling](#error-handling)
+- [Gateway & Custom Providers](#gateway--custom-providers)
+- [CLI](#cli)
+- [Documentation](#documentation)
+
 ## What is QRIS?
 
 QRIS is Indonesia's QR payment standard that unifies many payment methods under a single QR format. Technically, a QRIS payload is a **TLV** (`Tag-Length-Value`) string based on the EMVCo specification. Each segment contains:
@@ -140,6 +155,67 @@ console.log(validate(dynamicQris));
 ## Error handling
 
 `validate()` is synchronous and never throws — it returns a `ValidationResult`. However, `parse()`, `staticToDynamic()`, and `makeDynamic()` may throw when the input is invalid. Gateway adapters use `async/await` and may throw if the request fails.
+
+## Gateway & Custom Providers
+
+The SDK provides a `gateway` singleton to simplify integrating various providers (Midtrans, Xendit, Duitku) through a single centralized interface. The gateway delegates calls to the adapter without needing manual provider checks in your code:
+
+```ts
+import { gateway } from "qris-saurus";
+
+// 1. Configure
+gateway.configure({ 
+  provider: "midtrans",
+  serverKey: "SB-Mid-server-xxx", // or set MIDTRANS_SERVER_KEY env var
+  sandbox: true 
+}); 
+
+// 2. Use abstract methods (charge, verify, status) without caring which provider is active
+const chargeResult = await gateway.charge("INV-001", 50000);
+const statusResult = await gateway.status("INV-001");
+const verifyResult = gateway.verify(webhookPayload, headers); // verify is synchronous
+```
+
+### Supporting Custom Providers (Scaling)
+
+The gateway architecture is highly scalable. You can easily bring your own provider (e.g., another Biller or internal gateway) without modifying the core library. Just implement the `GatewayAdapter` interface which requires 4 core operations: `createDynamicQr`, `checkPaymentStatus`, `parseWebhook`, and `pollPaymentStatus`.
+
+There are two approaches to mount a custom adapter:
+
+**1. `gateway.useAdapter()` (Direct Injection)**
+
+Use this method to inject the adapter instance directly into the singleton. Great if you initialize the instance in your own module:
+
+```ts
+import { gateway, type GatewayAdapter } from "qris-saurus";
+
+class FinpayAdapter implements GatewayAdapter {
+  // ...implement 4 core operations
+}
+
+// Inject adapter directly
+gateway.useAdapter("finpay", new FinpayAdapter(), { apiKey: "secret" });
+
+// Ready to use
+await gateway.charge("INV-FIN", 10000); 
+```
+
+**2. `Gateway.registerProvider()` (Factory Registration)**
+
+Use this method if you're building a library or helper that registers the provider globally, so that your application later only needs to call `gateway.configure()`:
+
+```ts
+import { Gateway, gateway } from "qris-saurus";
+
+// Register to SDK's built-in factory
+Gateway.registerProvider("finpay", () => new FinpayAdapter());
+
+// Now it can be used like a built-in provider
+gateway.configure({ 
+  provider: "finpay",
+  apiKey: "secret" 
+} as any); // custom provider not yet in GatewayConfig type
+```
 
 ## CLI
 

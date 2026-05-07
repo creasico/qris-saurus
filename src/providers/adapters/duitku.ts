@@ -1,7 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig } from "./types";
+import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig, WebhookResult } from "./types";
 
 // statusCode dari Duitku: "00" lunas, "01" pending, "02" dibatalkan
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -16,7 +17,7 @@ function md5(input: string): string {
   return createHash("md5").update(input).digest("hex");
 }
 
-export class DuitkuAdapter {
+export class DuitkuAdapter implements GatewayAdapter {
   private baseUrl(sandbox = false): string {
     return sandbox
       ? "https://sandbox.duitku.com/webapi/api/merchant"
@@ -177,6 +178,37 @@ export class DuitkuAdapter {
       // timingSafeEqual throws if lengths differ, return false
       return false;
     }
+  }
+
+  /**
+   * Parse and verify a Duitku webhook callback into a normalised WebhookResult.
+   */
+  parseWebhook(
+    payload: unknown,
+    config: DuitkuConfig,
+  ): WebhookResult {
+    const raw = payload as Record<string, unknown>;
+    const valid = this.verifyWebhook(raw, config);
+    const statusCode = String(raw.resultCode ?? raw.statusCode ?? "01");
+    const statusMap: Record<string, PaymentStatusCode> = {
+      "00": "paid",
+      "01": "pending",
+      "02": "cancelled",
+    };
+
+    const amount = typeof raw.amount === "string"
+      ? parseFloat(raw.amount)
+      : typeof raw.amount === "number"
+        ? raw.amount
+        : undefined;
+
+    return {
+      valid,
+      orderId: String(raw.merchantOrderId ?? ""),
+      status: statusMap[statusCode] ?? "pending",
+      ...(amount !== undefined && { amount }),
+      raw: payload,
+    };
   }
 
   /**

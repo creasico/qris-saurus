@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
+import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
 import type {
   ApiQrCreateOptions,
@@ -10,6 +11,7 @@ import type {
   MidtransWebhookParseResult,
   MidtransWebhookPayload,
   RefundOptions,
+  WebhookResult,
 } from "./types";
 
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -63,7 +65,7 @@ function mapMidtransTransactionStatus(payload: MidtransWebhookPayload): PaymentS
   return STATUS_MAP[transactionStatus] ?? "pending";
 }
 
-export class MidtransAdapter {
+export class MidtransAdapter implements GatewayAdapter {
   private baseUrl(sandbox = false): string {
     return sandbox
       ? "https://api.sandbox.midtrans.com/v2"
@@ -243,7 +245,7 @@ export class MidtransAdapter {
   parseWebhook(
     payload: MidtransWebhookPayload,
     config: Pick<MidtransConfig, "serverKey">,
-  ): MidtransWebhookParseResult {
+  ): WebhookResult {
     const valid = this.verifyWebhook(payload, config);
     const orderId = String(payload.order_id ?? "");
     const status = this.getWebhookStatus(payload);
@@ -254,16 +256,19 @@ export class MidtransAdapter {
       ? parseMidtransDate(payload.settlement_time)
       : undefined;
 
+    const providerMeta: Record<string, unknown> = {};
+    if (typeof payload.fraud_status === "string") providerMeta.fraudStatus = payload.fraud_status;
+    if (typeof payload.transaction_id === "string") providerMeta.transactionId = payload.transaction_id;
+    if (typeof payload.payment_type === "string") providerMeta.paymentType = payload.payment_type;
+    if (typeof payload.acquirer === "string") providerMeta.acquirer = payload.acquirer;
+
     return {
       valid,
       orderId,
       status,
       ...(amount !== undefined && !Number.isNaN(amount) ? { amount } : {}),
       ...(paidAt !== undefined ? { paidAt } : {}),
-      ...(typeof payload.fraud_status === "string" ? { fraudStatus: payload.fraud_status } : {}),
-      ...(typeof payload.transaction_id === "string" ? { transactionId: payload.transaction_id } : {}),
-      ...(typeof payload.payment_type === "string" ? { paymentType: payload.payment_type } : {}),
-      ...(typeof payload.acquirer === "string" ? { acquirer: payload.acquirer } : {}),
+      ...(Object.keys(providerMeta).length > 0 ? { providerMeta } : {}),
       raw: payload,
     };
   }
