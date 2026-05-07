@@ -2,3 +2,8 @@ node_modules/
 dist/
 coverage/
 *.log
+.gemini
+.serena
+.sisyphus
+.env
+.env.local

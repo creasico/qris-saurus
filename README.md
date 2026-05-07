@@ -26,6 +26,8 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 - [Install](#install)
 - [Configure Environment](#configure-environment)
 - [Quick start](#quick-start)
+- [Implementasi Sederhana](#implementasi-sederhana)
+- [Contoh Lengkap](#contoh-lengkap)
 - [Error Handling](#error-handling)
 - [Gateway & Custom Providers](#gateway--custom-providers)
 - [CLI](#cli)
@@ -69,6 +71,24 @@ Secara umum, alurnya seperti ini:
 
 Library ini bekerja di lapisan **payload construction/manipulation**, bukan di lapisan settlement atau switching network.
 
+```mermaid
+sequenceDiagram
+    participant M as Merchant
+    participant C as Customer
+    participant A as Payment App
+    participant N as Payment Network
+    participant I as Issuer
+
+    M->>C: 1. Tampilkan QR Code
+    C->>A: 2. Scan QR
+    A->>A: 3. Baca payload TLV
+    A->>N: 4. Routing & switching
+    N->>I: 5. Proses pembayaran
+    I-->>N: 6. Hasil
+    N-->>A: 7. Settlement
+    A-->>M: 8. Notifikasi
+```
+
 ## Static vs dynamic QRIS
 
 ### QRIS statis
@@ -97,6 +117,18 @@ Ciri umumnya:
 3. **detectProvider** bila identifier provider dikenali
 4. **transform** QRIS statis menjadi dinamis
 5. **serialize** payload baru dan hitung ulang CRC
+
+```mermaid
+flowchart TD
+    A[String QRIS Statis] --> B["parse() → TLV Nodes"]
+    B --> C{"validate()\nCRC & tag valid?"}
+    C -- Invalid --> X[Throw Error]
+    C -- Valid --> D["Tag 01: 11 → 12\n(static → dynamic)"]
+    D --> E["Sisipkan Tag 54 (amount)"]
+    E --> F["Sisipkan Tag 62\n(merchant ref, terminal)"]
+    F --> G["Recalculate CRC\n(Tag 63)"]
+    G --> H["serialize()\n→ String QRIS Dinamis"]
+```
 
 Untuk fase sekarang, fokus utama library ini adalah **transformasi lokal** dari QRIS statis menjadi QRIS dinamis yang valid. Integrasi API gateway seperti Midtrans/Xendit/Duitku bisa ditambahkan kemudian sebagai layer terpisah.
 
@@ -254,6 +286,235 @@ const result = makeDynamic(staticQrisString, {
 console.log(dynamicQris);
 console.log(result.provider);
 console.log(validate(dynamicQris));
+```
+
+## Implementasi Sederhana
+
+Ada dua cara menggunakan qris-saurus: sebagai **package** (SDK) di project TypeScript/Bun kamu, atau langsung via **CLI** di terminal.
+
+```mermaid
+flowchart LR
+    subgraph SDK["Paket SDK"]
+        direction TB
+        S1["bun add qris-saurus"] --> S2["import & transform"]
+        S2 --> S3["render / gateway"]
+    end
+    subgraph Terminal["CLI Terminal"]
+        direction TB
+        C1["bun run build"] --> C2["validate → dynamic"]
+        C2 --> C3["render → PNG"]
+    end
+```
+
+### Package (SDK)
+
+```bash
+bun add qris-saurus
+```
+
+```ts
+import { makeDynamic, renderQrToDataUrl, validate } from "qris-saurus";
+
+const STATIC_QRIS = "00020101021126610016ID.CO.SHOPEE.WWW...";
+
+// 1. Transformasi statis → dinamis
+const { qrisString, provider } = makeDynamic(STATIC_QRIS, {
+  amount: 25000,
+  merchantRef: "INV-001",
+});
+
+// 2. Validasi hasil
+validate(qrisString); // { valid: true, errors: [] }
+
+// 3. Render ke gambar
+const qrImage = await renderQrToDataUrl(qrisString, { width: 320 });
+// <img src={qrImage} />
+```
+
+### CLI
+
+```bash
+# Build CLI
+bun run build
+
+# Validasi payload
+bun run dist/cli.js validate "000201010211..."
+
+# Transformasi statis → dinamis
+bun run dist/cli.js dynamic "000201010211..." --amount 25000 --merchant-ref INV-001
+
+# Render ke file PNG
+bun run dist/cli.js render "000201010211..." --output ./qris.png
+```
+
+## Contoh Lengkap
+
+Contoh standalone tersedia di folder [`examples`](./examples):
+
+```bash
+bun run examples/basic.ts    # Core API: parse, validate, detect, transform
+bun run examples/render.ts   # Render QR ke file dan data URL
+bun run examples/gateway.ts  # Integrasi gateway (Midtrans, Xendit, Duitku)
+```
+
+### Parse payload QRIS
+
+```ts
+import { parse } from "qris-saurus";
+
+const qris =
+  "00020101021126610016ID.CO.SHOPEE.WWW01189360091800230223530208230223530303UMI51440014ID.CO.QRIS.WWW0215ID10265163524850303UMI5204581753033605802ID5913Chick n booth6010PEKALONGAN61055118262070703A016304B9ED";
+
+const parsed = parse(qris);
+
+parsed.nodes.find((n) => n.id === "59")?.value; // "Chick n booth"
+parsed.nodes.find((n) => n.id === "60")?.value; // "PEKALONGAN"
+parsed.nodes.find((n) => n.id === "53")?.value; // "360" (IDR)
+parsed.crc; // "B9ED"
+```
+
+### Validasi payload
+
+```ts
+import { validate } from "qris-saurus";
+
+const result = validate(qris);
+// { valid: true, errors: [] }
+
+const tampered = qris.slice(0, -4) + "0000";
+const invalid = validate(tampered);
+// { valid: false, errors: ["Invalid CRC value"] }
+```
+
+### Deteksi provider
+
+```ts
+import { detectProvider, listProviders } from "qris-saurus";
+
+const provider = detectProvider(qris);
+console.log(provider?.info.code);    // "shopeepay"
+console.log(provider?.info.name);    // "ShopeePay"
+console.log(provider?.info.supportsApiDynamic); // false
+
+const all = listProviders();
+for (const p of all) {
+  console.log(`${p.info.code}: ${p.info.name}`);
+}
+```
+
+### Transformasi statis ke dinamis
+
+```ts
+import { staticToDynamic } from "qris-saurus";
+
+const dynamic = staticToDynamic(qris, {
+  amount: 75000,
+  merchantRef: "ORD-2024-001",
+  terminalLabel: "POS-01",
+});
+```
+
+### Transformasi dengan tip
+
+```ts
+import { staticToDynamic } from "qris-saurus";
+
+// Tip tetap (Rp 2.000)
+const withFixedTip = staticToDynamic(qris, {
+  amount: 50000,
+  tipType: "fixed",
+  tipValue: 2000,
+});
+
+// Tip persen (5%)
+const withPercentTip = staticToDynamic(qris, {
+  amount: 50000,
+  tipType: "percent",
+  tipValue: 5,
+});
+```
+
+### makeDynamic dengan deteksi provider
+
+```ts
+import { makeDynamic } from "qris-saurus";
+
+const result = makeDynamic(qris, {
+  amount: 25000,
+  merchantRef: "INV-001",
+});
+
+console.log(result.source);   // "local" (transformasi lokal)
+console.log(result.provider); // "shopeepay"
+console.log(result.amount);   // 25000
+console.log(result.qrisString); // payload dinamis baru
+```
+
+### CRC dan serialisasi
+
+```ts
+import { computeCrc, verifyCrc, parse, serialize } from "qris-saurus";
+
+// Hitung CRC dari payload (termasuk "6304" di akhir)
+const payload = qris.slice(0, -4); // buang 4 char CRC, simpan "6304"
+const crc = computeCrc(payload);
+console.log(crc); // "1669"
+
+// Verifikasi CRC pada string QRIS
+const isValid = verifyCrc(qris);
+console.log(isValid); // true
+
+// Parse lalu serialize — payload harus sama
+const parsed = parse(qris);
+const reserialized = serialize(parsed);
+console.log(qris === reserialized); // true
+```
+
+### Render QR ke gambar
+
+```ts
+import { renderQrToDataUrl, renderQrToFile, makeDynamic } from "qris-saurus";
+
+const { qrisString } = makeDynamic(qris, { amount: 50000 });
+
+// Base64 data URL — langsung bisa dipakai di HTML
+const dataUrl = await renderQrToDataUrl(qrisString, { width: 320 });
+// data:image/png;base64,...
+
+// Simpan ke file
+await renderQrToFile(qrisString, "./qris.png", { width: 400, margin: 3 });
+```
+
+### Error handling
+
+```ts
+import { validate, parse, makeDynamic, staticToDynamic } from "qris-saurus";
+
+// validate() tidak pernah throw — kembalikan { valid, errors }
+const check = validate("bukan-qris");
+// { valid: false, errors: ["QRIS payload too short"] }
+
+// parse() throw bila CRC hilang/salah
+try {
+  parse("invalid");
+} catch (err) {
+  console.error(err.message); // "QRIS payload is missing CRC tag"
+}
+
+// staticToDynamic() throw bila sudah dinamis
+const dynamic = staticToDynamic(qris, { amount: 10000 });
+try {
+  staticToDynamic(dynamic, { amount: 10000 });
+} catch (err) {
+  console.error(err.message); // "QRIS payload is already dynamic"
+}
+
+// staticToDynamic() throw bila amount negatif
+try {
+  staticToDynamic(qris, { amount: -500 });
+} catch (err) {
+  console.error(err.message); // "Amount must be a positive number"
+}
 ```
 
 ## Error Handling
