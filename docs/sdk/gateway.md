@@ -81,7 +81,7 @@ Content-Type: application/json
 }
 ```
 
-Response berisi `qr_string` atau `actions[].url` (URL ke QR image) tergantung tipe response. Adapter ini mendukung keduanya.
+Response Midtrans dipetakan menjadi dua artefak yang berbeda: `qrisString` selalu berisi payload EMV QRIS mentah, sedangkan `qrImageUrl` / `qrImageUrlV2` berisi URL PNG QR bila Midtrans menyediakannya.
 
 - Membutuhkan: Server Key, dikodekan Base64
 - Expiry: dikontrol oleh Midtrans (biasanya 15–30 menit)
@@ -195,14 +195,19 @@ interface ApiQrCreateOptions {
 
 // Hasil dari createDynamicQr
 interface ApiQrResult {
-  qrisString: string;       // langsung bisa dirender
+  qrisString: string;       // payload EMV QRIS mentah, siap dirender lokal
   gatewayOrderId: string;   // simpan ini untuk checkPaymentStatus
   expiresAt?: Date;
+  qrImageUrl?: string;      // URL PNG QR dari gateway (jika ada)
+  qrImageUrlV2?: string;    // URL PNG alternatif, misalnya versi ASPI/bordered
+  gatewayTransactionId?: string;
+  acquirer?: string;
+  paymentType?: string;
   raw: unknown;
 }
 
 // Hasil dari checkPaymentStatus
-type PaymentStatusCode = "pending" | "paid" | "expired" | "failed" | "cancelled";
+type PaymentStatusCode = "pending" | "paid" | "refunded" | "expired" | "failed" | "cancelled";
 
 interface PaymentStatusResult {
   orderId: string;
@@ -227,7 +232,11 @@ import {
 const midtransQr = await midtransAdapter.createDynamicQr(
   { orderId: "INV-2026-001", amount: 75_000 },
   { serverKey: process.env.MIDTRANS_SERVER_KEY!, sandbox: true },
+  { overrideNotificationUrl: "https://merchant.example/webhooks/midtrans" },
 );
+console.log(midtransQr.qrisString);      // payload QRIS mentah
+console.log(midtransQr.qrImageUrl);      // PNG URL jika disediakan Midtrans
+console.log(midtransQr.qrImageUrlV2);    // PNG bordered / ASPI jika tersedia
 const status = await midtransAdapter.checkPaymentStatus(
   "INV-2026-001",
   { serverKey: process.env.MIDTRANS_SERVER_KEY!, sandbox: true },
@@ -311,7 +320,7 @@ const serverKey = "SB-Mid-server-xxxxx"; // JANGAN ini di frontend
 
 ## Verifikasi webhook
 
-Setiap adapter menyediakan method `verifyWebhook` untuk memvalidasi bahwa notifikasi masuk benar-benar berasal dari gateway — bukan dari pihak yang tidak dikenal.
+Setiap adapter menyediakan method `verifyWebhook` untuk memvalidasi bahwa notifikasi masuk benar-benar berasal dari gateway — bukan dari pihak yang tidak dikenal. Khusus Midtrans, adapter juga menyediakan `parseWebhook()` dan `getWebhookStatus()` agar normalisasi status tidak perlu diulang di aplikasi.
 
 ### Midtrans
 
@@ -328,17 +337,18 @@ import { midtransAdapter } from "qris-saurus";
 app.post("/webhook/midtrans", async (req, res) => {
   const payload = req.body as Record<string, unknown>;
 
-  const valid = midtransAdapter.verifyWebhook(payload, {
+  const parsed = midtransAdapter.parseWebhook(payload, {
     serverKey: process.env.MIDTRANS_SERVER_KEY!,
   });
 
-  if (!valid) {
+  if (!parsed.valid) {
     res.status(400).send("Invalid signature");
     return;
   }
 
-  if (payload.transaction_status === "settlement") {
+  if (parsed.status === "paid") {
     // catat pembayaran berhasil
+    console.log(parsed.orderId, parsed.paymentType, parsed.acquirer);
   }
   res.sendStatus(200);
 });

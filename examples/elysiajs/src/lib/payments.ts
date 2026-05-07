@@ -8,6 +8,7 @@ import {
   staticToDynamic,
   xenditAdapter,
 } from "qris-saurus";
+import type { MidtransWebhookPayload } from "qris-saurus";
 import type {
   AppConfig,
   GatewayPaymentResult,
@@ -29,13 +30,7 @@ function resolveOrderStatus(status: OrderPayment["status"]): Order["status"] {
 
 function resolveWebhookPaymentStatus(provider: WebhookProvider, payload: Record<string, unknown>): OrderPayment["status"] {
   if (provider === "midtrans") {
-    const transactionStatus = String(payload.transaction_status ?? "pending").toLowerCase();
-    if (transactionStatus === "settlement" || transactionStatus === "capture") return "paid";
-    if (transactionStatus === "expire") return "expired";
-    if (transactionStatus === "cancel") return "cancelled";
-    if (transactionStatus === "deny" || transactionStatus === "failure") return "failed";
-    if (transactionStatus === "refund") return "refunded";
-    return "pending";
+    return midtransAdapter.getWebhookStatus(payload as MidtransWebhookPayload);
   }
 
   if (provider === "xendit") {
@@ -139,24 +134,7 @@ function createLocalPayment(order: Order, config: AppConfig): LocalPaymentResult
   };
 }
 
-function extractMidtransQrImageUrl(raw: unknown): string | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const rawObj = raw as Record<string, unknown>;
-  if (Array.isArray(rawObj.actions)) {
-    const action = rawObj.actions.find((a: any) => a && a.name === "generate-qr-code");
-    if (action && typeof action.url === "string") {
-      return action.url;
-    }
-  }
-  return undefined;
-}
-
 function paymentRecordFromGateway(result: GatewayPaymentResult, qrDataUrl: string, amount: number): OrderPayment {
-  let qrImageUrl: string | undefined;
-  if (result.provider === "midtrans") {
-    qrImageUrl = extractMidtransQrImageUrl(result.result.raw);
-  }
-
   return {
     provider: result.provider,
     source: result.source,
@@ -164,7 +142,7 @@ function paymentRecordFromGateway(result: GatewayPaymentResult, qrDataUrl: strin
     amount,
     qrisString: result.result.qrisString,
     qrDataUrl,
-    ...(qrImageUrl ? { qrImageUrl } : {}),
+    ...(result.result.qrImageUrl ? { qrImageUrl: result.result.qrImageUrl } : {}),
     gatewayOrderId: result.result.gatewayOrderId,
     ...(result.result.expiresAt ? { expiresAt: result.result.expiresAt.toISOString() } : {}),
     status: "pending",

@@ -127,7 +127,7 @@ curl -X POST http://localhost:3000/orders \
 curl -X POST http://localhost:3000/orders/<ORDER_ID>/payments/qris
 ```
 
-Response mengandung `qrisString`, `qrDataUrl`, `provider`, `source`, `gatewayOrderId?`, dan `expiresAt?`.
+Response mengandung `qrisString`, `qrDataUrl`, `provider`, `source`, `gatewayOrderId?`, `expiresAt?`, dan untuk Midtrans juga dapat memuat `qrImageUrl` (serta `qrImageUrlV2` di raw gateway result).
 
 ### 4. Check payment status
 
@@ -139,4 +139,5 @@ curl http://localhost:3000/orders/<ORDER_ID>/payments/qris/status
 
 - Local mode memakai `makeDynamic()` / `staticToDynamic()` dan merender QR ke data URL dengan `renderQrToDataUrl()`.
 - Gateway mode memakai adapter publik `midtransAdapter`, `xenditAdapter`, atau `duitkuAdapter` dari package `qris-saurus`.
+- Integrasi Midtrans di example sekarang memakai field typed `qrImageUrl` dari adapter dan `midtransAdapter.parseWebhook()` untuk validasi + normalisasi webhook.
 - Data produk dan order disimpan in-memory agar contoh tetap fokus ke integrasi package.
