@@ -183,6 +183,13 @@ describe("xenditAdapter.parseWebhook", () => {
         status: "COMPLETED",
         amount: 50000,
         created: "2026-05-07T10:00:00.000Z",
+        payments: [
+          {
+            status: "SUCCEEDED",
+            amount: 50000,
+            created: "2026-05-07T10:00:05.000Z",
+          },
+        ],
       },
     };
     const headers = { "x-callback-token": "my-token" };
@@ -194,13 +201,10 @@ describe("xenditAdapter.parseWebhook", () => {
     expect(result.paidAt).toBeInstanceOf(Date);
   });
 
-  test("returns valid=false when callbackToken is missing from config", () => {
-    const configNoToken = { secretKey: "xnd_test" };
+  test("throws error when callbackToken is missing from config", () => {
+    const configNoToken = { secretKey: "xnd_test" } as any;
     const payload = { data: { reference_id: "INV-X02", status: "ACTIVE" } };
-    const result = xenditAdapter.parseWebhook(payload, configNoToken);
-    expect(result.valid).toBe(false);
-    expect(result.orderId).toBe("INV-X02");
-    expect(result.status).toBe("pending");
+    expect(() => xenditAdapter.parseWebhook(payload, configNoToken)).toThrow(/missing callbackToken/);
   });
 });
 
@@ -216,29 +220,28 @@ describe("duitkuAdapter.parseWebhook", () => {
   const validPayload = {
     merchantCode: "DS12345",
     amount: "75000",
-    merchantOrderId: "INV-D01",
+    merchantOrderId: "INV-001",
     resultCode: "00",
     signature: "8c9eaf3aea6fd952b49882225ed575ae",
   };
 
   test("returns normalized paid result with valid signature", () => {
-    // Fix the merchantOrderId to match the signature fixture
-    const payload = { ...validPayload, merchantOrderId: "INV-001" };
-    const result = duitkuAdapter.parseWebhook(payload, config);
+    const result = duitkuAdapter.parseWebhook(validPayload, config);
     expect(result.valid).toBe(true);
     expect(result.orderId).toBe("INV-001");
     expect(result.status).toBe("paid");
     expect(result.amount).toBe(75000);
   });
 
-  test("returns pending status for statusCode 01", () => {
-    const payload = { ...validPayload, resultCode: "01", merchantOrderId: "INV-001" };
+  test("returns pending status for resultCode 01 with valid signature", () => {
+    const payload = { ...validPayload, resultCode: "01" };
     const result = duitkuAdapter.parseWebhook(payload, config);
+    expect(result.valid).toBe(true);
     expect(result.status).toBe("pending");
   });
 
   test("returns valid=false when signature is wrong", () => {
-    const payload = { ...validPayload, signature: "deadbeef", merchantOrderId: "INV-001" };
+    const payload = { ...validPayload, signature: "deadbeef" };
     const result = duitkuAdapter.parseWebhook(payload, config);
     expect(result.valid).toBe(false);
   });

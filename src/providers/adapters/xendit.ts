@@ -173,31 +173,56 @@ export class XenditAdapter implements GatewayAdapter {
     config: XenditConfig,
     headers?: Record<string, string | string[] | undefined>,
   ): WebhookResult {
-    const valid = config.callbackToken && headers
-      ? this.verifyWebhook(headers, config.callbackToken)
-      : false;
+    if (payload === null || typeof payload !== "object") {
+      throw new Error("Xendit webhook payload must be an object");
+    }
+
+    if (!config.callbackToken || !headers) {
+      throw new Error("Xendit webhook verification not configured: missing callbackToken or headers");
+    }
+
+    const isValid = this.verifyWebhook(headers, config.callbackToken);
+    if (!isValid) {
+      throw new Error("Xendit webhook verification failed: invalid callback token");
+    }
 
     const raw = payload as Record<string, unknown>;
     const data = (raw.data ?? raw) as Record<string, unknown>;
 
     const orderId = String(data.reference_id ?? data.id ?? "");
+    if (!orderId) {
+      throw new Error("Xendit webhook error: reference_id and id are both missing from data");
+    }
+
     const eventType = String(raw.event ?? "").toLowerCase();
 
     let status: PaymentStatusCode = "pending";
     const qrStatus = String(data.status ?? "").toUpperCase();
+    const expiresAt = typeof data.expires_at === "string" ? new Date(data.expires_at) : null;
+
     if (eventType.includes("paid") || eventType.includes("completed") || qrStatus === "COMPLETED") {
       status = "paid";
-    } else if (qrStatus === "INACTIVE" || qrStatus === "EXPIRED") {
+    } else if (qrStatus === "INACTIVE") {
+      status = expiresAt && expiresAt < new Date() ? "expired" : "cancelled";
+    } else if (qrStatus === "EXPIRED") {
       status = "expired";
     }
 
     const amount = typeof data.amount === "number" ? data.amount : undefined;
-    const paidAt = status === "paid" && typeof data.created === "string"
-      ? new Date(data.created)
-      : undefined;
+
+    let paidAt: Date | undefined;
+    if (status === "paid") {
+      const payments = Array.isArray(data.payments) ? data.payments as Record<string, unknown>[] : [];
+      const successfulPayment = payments.find(
+        (p) => String(p.status).toUpperCase() === "SUCCEEDED",
+      );
+      if (successfulPayment && typeof successfulPayment.created === "string") {
+        paidAt = new Date(successfulPayment.created);
+      }
+    }
 
     return {
-      valid,
+      valid: true,
       orderId,
       status,
       ...(amount !== undefined && { amount }),

@@ -187,6 +187,15 @@ export class DuitkuAdapter implements GatewayAdapter {
     payload: unknown,
     config: DuitkuConfig,
   ): WebhookResult {
+    if (payload === null || typeof payload !== "object") {
+      return {
+        valid: false,
+        orderId: "",
+        status: "pending",
+        raw: payload,
+      };
+    }
+
     const raw = payload as Record<string, unknown>;
     const valid = this.verifyWebhook(raw, config);
     const statusCode = String(raw.resultCode ?? raw.statusCode ?? "01");
@@ -206,7 +215,7 @@ export class DuitkuAdapter implements GatewayAdapter {
       valid,
       orderId: String(raw.merchantOrderId ?? ""),
       status: statusMap[statusCode] ?? "pending",
-      ...(amount !== undefined && { amount }),
+      ...(amount !== undefined && !Number.isNaN(amount) && { amount }),
       raw: payload,
     };
   }
