@@ -1,6 +1,6 @@
 {
   "name": "qris-saurus",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Bun/TypeScript SDK to parse, validate, and transform static QRIS into dynamic QRIS.",
   "type": "module",
   "license": "MIT",
