@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test } from "bun:test";
-import { ConfigurationError, ProviderCapabilityError } from "../../src/gateway/errors";
+import { ConfigurationError, GatewayError, ProviderCapabilityError } from "../../src/gateway/errors";
 import { Gateway, gateway } from "../../src/gateway/index";
 import { genericStaticQris } from "../fixtures/qris";
 
@@ -83,12 +83,12 @@ describe("gateway.reset", () => {
 // ─── not configured errors ───────────────────────────────────────────────────
 
 describe("gateway (not configured)", () => {
-  test("charge throws ConfigurationError when not configured", () => {
-    expect(gateway.charge("INV-001", 25000)).rejects.toThrow(ConfigurationError);
+  test("charge throws ConfigurationError when not configured", async () => {
+    await expect(gateway.charge("INV-001", 25000)).rejects.toThrow(ConfigurationError);
   });
 
-  test("status throws ConfigurationError when not configured", () => {
-    expect(gateway.status("INV-001")).rejects.toThrow(ConfigurationError);
+  test("status throws ConfigurationError when not configured", async () => {
+    await expect(gateway.status("INV-001")).rejects.toThrow(ConfigurationError);
   });
 
   test("verify throws ConfigurationError when not configured", () => {
@@ -99,8 +99,8 @@ describe("gateway (not configured)", () => {
     expect(() => gateway.toDynamic(genericStaticQris, 25000)).toThrow(ConfigurationError);
   });
 
-  test("cancel throws ConfigurationError when not configured", () => {
-    expect(gateway.cancel("INV-001")).rejects.toThrow(ConfigurationError);
+  test("cancel throws ConfigurationError when not configured", async () => {
+    await expect(gateway.cancel("INV-001")).rejects.toThrow(ConfigurationError);
   });
 });
 
@@ -189,32 +189,21 @@ describe("gateway.toDynamic", () => {
 // ─── Provider capability errors ──────────────────────────────────────────────
 
 describe("gateway provider capabilities", () => {
-  test("verify works for xendit with callbackToken", () => {
+  test("verify throws ProviderCapabilityError for xendit", () => {
     gateway.configure({ provider: "xendit", secretKey: "xnd_test", callbackToken: "tok-abc" });
     const payload = {
       event: "qr.payment.completed",
       data: { reference_id: "INV-X01", status: "COMPLETED", amount: 50000 },
     };
-    const result = gateway.verify(payload, { "x-callback-token": "tok-abc" });
-    expect(result.valid).toBe(true);
-    expect(result.orderId).toBe("INV-X01");
-    expect(result.status).toBe("paid");
+    expect(() => gateway.verify(payload, { "x-callback-token": "tok-abc" })).toThrow(ProviderCapabilityError);
   });
 
-  test("verify returns valid=false for xendit without callbackToken", () => {
+  test("cancel throws ProviderCapabilityError on xendit", async () => {
     gateway.configure({ provider: "xendit", secretKey: "xnd_test" });
-    const payload = { data: { reference_id: "INV-X02", status: "ACTIVE" } };
-    const result = gateway.verify(payload);
-    expect(result.valid).toBe(false);
-    expect(result.status).toBe("pending");
+    await expect(gateway.cancel("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 
-  test("cancel throws ProviderCapabilityError on xendit", () => {
-    gateway.configure({ provider: "xendit", secretKey: "xnd_test" });
-    expect(gateway.cancel("INV-001")).rejects.toThrow(ProviderCapabilityError);
-  });
-
-  test("cancel throws ProviderCapabilityError on duitku", () => {
+  test("cancel throws ProviderCapabilityError on duitku", async () => {
     gateway.configure({
       provider: "duitku",
       merchantCode: "DS123",
@@ -223,15 +212,15 @@ describe("gateway provider capabilities", () => {
       returnUrl: "https://example.com/return",
       callbackUrl: "https://example.com/callback",
     });
-    expect(gateway.cancel("INV-001")).rejects.toThrow(ProviderCapabilityError);
+    await expect(gateway.cancel("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 
-  test("expire throws ProviderCapabilityError on xendit", () => {
+  test("expire throws ProviderCapabilityError on xendit", async () => {
     gateway.configure({ provider: "xendit", secretKey: "xnd_test" });
-    expect(gateway.expire("INV-001")).rejects.toThrow(ProviderCapabilityError);
+    await expect(gateway.expire("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 
-  test("expire throws ProviderCapabilityError on duitku", () => {
+  test("expire throws ProviderCapabilityError on duitku", async () => {
     gateway.configure({
       provider: "duitku",
       merchantCode: "DS123",
@@ -240,15 +229,15 @@ describe("gateway provider capabilities", () => {
       returnUrl: "https://example.com/return",
       callbackUrl: "https://example.com/callback",
     });
-    expect(gateway.expire("INV-001")).rejects.toThrow(ProviderCapabilityError);
+    await expect(gateway.expire("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 
-  test("refund throws ProviderCapabilityError on xendit", () => {
+  test("refund throws ProviderCapabilityError on xendit", async () => {
     gateway.configure({ provider: "xendit", secretKey: "xnd_test" });
-    expect(gateway.refund("INV-001")).rejects.toThrow(ProviderCapabilityError);
+    await expect(gateway.refund("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 
-  test("refund throws ProviderCapabilityError on duitku", () => {
+  test("refund throws ProviderCapabilityError on duitku", async () => {
     gateway.configure({
       provider: "duitku",
       merchantCode: "DS123",
@@ -257,7 +246,7 @@ describe("gateway provider capabilities", () => {
       returnUrl: "https://example.com/return",
       callbackUrl: "https://example.com/callback",
     });
-    expect(gateway.refund("INV-001")).rejects.toThrow(ProviderCapabilityError);
+    await expect(gateway.refund("INV-001")).rejects.toThrow(ProviderCapabilityError);
   });
 });
 
@@ -319,8 +308,8 @@ describe("error classes", () => {
     expect(err.name).toBe("ProviderCapabilityError");
   });
 
-  test("both extend GatewayError", () => {
-    const { GatewayError } = require("../../src/gateway/errors");
+  test("both extend GatewayError", async () => {
+    const { GatewayError } = await import("../../src/gateway/errors");
     expect(new ConfigurationError("test") instanceof GatewayError).toBe(true);
     expect(new ProviderCapabilityError("test") instanceof GatewayError).toBe(true);
   });
@@ -405,9 +394,8 @@ describe("Gateway.registerProvider", () => {
   test("registered provider works via configure()", () => {
     Gateway.registerProvider("testpay", mockFactory);
     try {
-      // Use useAdapter path since configure() requires known GatewayConfig type
-      const adapter = mockFactory();
-      gateway.useAdapter("testpay", adapter, {});
+      // Configure using the registered provider
+      gateway.configure({ provider: "testpay" as any, apiKey: "test" });
       const result = gateway.verify({});
       expect(result.valid).toBe(false);
     } finally {

@@ -312,13 +312,17 @@ SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai pro
 ```ts
 import { gateway } from "qris-saurus";
 
-// 1. Configure (Otomatis membaca kredensial dari process.env jika tersedia)
-gateway.configure({ provider: "midtrans" }); 
+// 1. Configure
+gateway.configure({ 
+  provider: "midtrans",
+  serverKey: "SB-Mid-server-xxx", // atau set environment variable MIDTRANS_SERVER_KEY
+  sandbox: true 
+}); 
 
-// 2. Gunakan method abstrak tanpa peduli provider yang sedang aktif
+// 2. Gunakan method abstrak (charge, verify, status) tanpa peduli provider yang sedang aktif
 const chargeResult = await gateway.charge("INV-001", 50000);
-const verifyResult = gateway.verify(webhookPayload, headers);
 const statusResult = await gateway.status("INV-001");
+const verifyResult = gateway.verify(webhookPayload, headers); // verify bersifat sinkron
 ```
 
 ### Mendukung Custom Provider (Scaling)
@@ -357,7 +361,7 @@ Gateway.registerProvider("finpay", () => new FinpayAdapter());
 
 // Sekarang bisa dipakai selayaknya provider bawaan
 gateway.configure({ 
-  provider: "finpay" as any, // override type jika strict mode
+  provider: "finpay" as any, // custom provider belum ada di tipe GatewayConfig
   apiKey: "secret" 
 });
 ```

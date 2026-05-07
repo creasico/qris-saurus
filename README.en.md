@@ -163,13 +163,17 @@ The SDK provides a `gateway` singleton to simplify integrating various providers
 ```ts
 import { gateway } from "qris-saurus";
 
-// 1. Configure (Automatically reads credentials from process.env if available)
-gateway.configure({ provider: "midtrans" }); 
+// 1. Configure
+gateway.configure({ 
+  provider: "midtrans",
+  serverKey: "SB-Mid-server-xxx", // or set MIDTRANS_SERVER_KEY env var
+  sandbox: true 
+}); 
 
-// 2. Use abstract methods without caring which provider is currently active
+// 2. Use abstract methods (charge, verify, status) without caring which provider is active
 const chargeResult = await gateway.charge("INV-001", 50000);
-const verifyResult = gateway.verify(webhookPayload, headers);
 const statusResult = await gateway.status("INV-001");
+const verifyResult = gateway.verify(webhookPayload, headers); // verify is synchronous
 ```
 
 ### Supporting Custom Providers (Scaling)
@@ -208,7 +212,7 @@ Gateway.registerProvider("finpay", () => new FinpayAdapter());
 
 // Now it can be used like a built-in provider
 gateway.configure({ 
-  provider: "finpay" as any, // override type if using strict mode
+  provider: "finpay" as any, // custom provider not yet in GatewayConfig type
   apiKey: "secret" 
 });
 ```
