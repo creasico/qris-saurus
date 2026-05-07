@@ -5,3 +5,5 @@ coverage/
 .gemini
 .serena
 .sisyphus
+.env
+.env.local
