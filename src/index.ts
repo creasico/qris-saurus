@@ -23,7 +23,15 @@ export type * from "./providers/adapters/types";
 // Gateway exports
 export { Gateway, gateway } from "./gateway/index";
 export { ConfigurationError, GatewayError, ProviderCapabilityError } from "./gateway/errors";
-export type * from "./gateway/types";
+export type {
+  ChargeOptions,
+  GatewayChargeResult,
+  GatewayConfig,
+  GatewayDynamicOptions,
+  GatewayProvider,
+  GatewayStatusResult,
+  GatewayWebhookResult,
+} from "./gateway/types";
 
 // Render and transform exports
 export * from "./render";
