@@ -86,13 +86,18 @@ interface ApiQrCreateOptions {
 }
 
 interface ApiQrResult {
-  qrisString: string;
+  qrisString: string;       // raw EMV QRIS payload for local rendering
   gatewayOrderId: string;
   expiresAt?: Date;
+  qrImageUrl?: string;      // PNG URL returned by the gateway, if available
+  qrImageUrlV2?: string;    // alternate PNG variant, e.g. bordered/ASPI
+  gatewayTransactionId?: string;
+  acquirer?: string;
+  paymentType?: string;
   raw: unknown;
 }
 
-type PaymentStatusCode = "pending" | "paid" | "expired" | "failed" | "cancelled";
+type PaymentStatusCode = "pending" | "paid" | "refunded" | "expired" | "failed" | "cancelled";
 
 interface PaymentStatusResult {
   orderId: string;
@@ -116,7 +121,11 @@ import {
 const midtransQr = await midtransAdapter.createDynamicQr(
   { orderId: "INV-2026-001", amount: 75_000 },
   { serverKey: process.env.MIDTRANS_SERVER_KEY!, sandbox: true },
+  { overrideNotificationUrl: "https://merchant.example/webhooks/midtrans" },
 );
+console.log(midtransQr.qrisString);   // raw QRIS payload
+console.log(midtransQr.qrImageUrl);   // PNG URL when Midtrans provides one
+console.log(midtransQr.qrImageUrlV2); // alternate bordered PNG URL
 
 const xenditQr = await xenditAdapter.createDynamicQr(
   { orderId: "INV-2026-001", amount: 75_000 },
@@ -157,7 +166,7 @@ Gateway credentials must never be exposed in the frontend or bundled into client
 
 ## Webhook verification
 
-Each adapter provides a `verifyWebhook` method to validate that incoming notifications really come from the gateway.
+Each adapter provides a `verifyWebhook` method to validate that incoming notifications really come from the gateway. Midtrans also exposes `parseWebhook()` and `getWebhookStatus()` so consumers do not need to duplicate Midtrans-specific status normalization.
 
 ## Payment status polling
 

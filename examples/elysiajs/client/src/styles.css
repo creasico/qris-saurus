@@ -1,0 +1,155 @@
+* { box-sizing: border-box; margin: 0; }
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+/* ── Topbar ── */
+.topbar {
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.topbar h1 { font-size: 18px; font-weight: 700; color: #38bdf8; }
+.topbar .badge {
+  background: #334155; color: #94a3b8;
+  font-size: 11px; padding: 3px 8px; border-radius: 6px;
+  text-decoration: none;
+}
+.topbar a.badge:hover { color: #38bdf8; }
+
+/* ── Layout ── */
+.wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
+.card {
+  background: #1e293b; border: 1px solid #334155;
+  border-radius: 12px; padding: 20px; margin-bottom: 16px;
+}
+.card h2 {
+  font-size: 14px; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+
+/* ── Products Grid ── */
+.products { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.p-card {
+  background: #0f172a; border: 1px solid #334155;
+  border-radius: 12px; padding: 16px; text-align: center;
+  cursor: pointer; transition: all .15s; user-select: none;
+}
+.p-card:hover { border-color: #38bdf8; transform: translateY(-2px); }
+.p-card.selected { border-color: #38bdf8; background: #172554; box-shadow: 0 0 0 1px #38bdf8; }
+.p-card .emoji { font-size: 48px; line-height: 1; margin-bottom: 10px; }
+.p-card .name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.p-card .desc { color: #64748b; font-size: 12px; margin-bottom: 8px; line-height: 1.3; }
+.p-card .price { color: #38bdf8; font-weight: 700; font-size: 15px; }
+
+/* ── Qty Controls ── */
+.qty-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+.qty-btn {
+  width: 28px; height: 28px; border-radius: 8px;
+  border: 1px solid #475569; background: #1e293b; color: #e2e8f0;
+  font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.qty-btn:hover { background: #334155; }
+.qty-val { font-weight: 700; font-size: 15px; min-width: 20px; text-align: center; }
+
+/* ── Inputs & Buttons ── */
+input {
+  width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font: inherit;
+}
+input:focus { outline: none; border-color: #38bdf8; }
+
+.btn {
+  display: block; width: 100%; padding: 12px; border-radius: 10px;
+  border: none; font: inherit; font-weight: 600; cursor: pointer;
+  text-align: center; text-decoration: none; transition: all .15s;
+}
+.btn + .btn { margin-top: 8px; }
+.btn-primary { background: #2563eb; color: white; }
+.btn-primary:hover { background: #1d4ed8; }
+.btn-success { background: #059669; color: white; }
+.btn-success:hover { background: #047857; }
+.btn-danger { background: #dc2626; color: white; }
+.btn-ghost { background: transparent; border: 1px solid #475569; color: #94a3b8; }
+.btn-ghost:hover { background: #334155; color: #e2e8f0; }
+.btn-warn { background: #d97706; color: white; }
+
+/* ── Status Badges ── */
+.status {
+  display: inline-block; padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+}
+.s-pending { background: #1e3a5f; color: #38bdf8; }
+.s-paid { background: #064e3b; color: #34d399; }
+.s-cancelled { background: #451a1a; color: #fca5a5; }
+.s-expired { background: #431407; color: #fdba74; }
+.s-failed { background: #451a1a; color: #fca5a5; }
+.s-refunded { background: #312e81; color: #a5b4fc; }
+
+/* ── Misc ── */
+.muted { color: #64748b; font-size: 13px; }
+.sep { height: 12px; }
+.order-item {
+  display: flex; justify-content: space-between;
+  padding: 6px 0; border-bottom: 1px solid #334155; font-size: 13px;
+}
+.order-item:last-child { border: none; }
+
+/* ── Dialog ── */
+dialog {
+  border: none; border-radius: 16px; background: #1e293b; color: #e2e8f0;
+  box-shadow: 0 25px 50px rgba(0,0,0,.5); padding: 28px; max-width: 420px; width: 90vw;
+}
+dialog::backdrop { background: rgba(0,0,0,.7); }
+dialog img { width: 100%; max-width: 280px; border-radius: 12px; margin: 12px auto; display: block; border: 1px solid #334155; }
+dialog h2 { text-align: center; margin-bottom: 4px; }
+
+.copy-box { display: flex; gap: 6px; margin: 8px 0; }
+.copy-box input { flex: 1; font-size: 11px; }
+.copy-box button {
+  flex-shrink: 0; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid #475569; background: #334155; color: #e2e8f0;
+  cursor: pointer; font-size: 12px;
+}
+
+/* ── Simulator Page ── */
+.sim-page { max-width: 900px; margin: 0 auto; padding: 20px; }
+.sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.tx-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #334155; font-size: 13px;
+  cursor: pointer; transition: background .15s;
+}
+.tx-row:last-child { border: none; }
+.tx-row:hover { background: #172554; margin: 0 -12px; padding: 10px 12px; border-radius: 8px; }
+.tx-row.active { background: #172554; margin: 0 -12px; padding: 10px 12px; border-radius: 8px; }
+.tx-id { font-weight: 600; font-size: 13px; }
+.tx-amount { color: #38bdf8; font-weight: 600; }
+
+.sim-steps { counter-reset: step; padding-left: 0; list-style: none; }
+.sim-steps li {
+  counter-increment: step; padding: 8px 0 8px 32px;
+  position: relative; font-size: 14px; color: #cbd5e1;
+}
+.sim-steps li::before {
+  content: counter(step); position: absolute; left: 0;
+  width: 24px; height: 24px; background: #334155; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #38bdf8;
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+  .grid { grid-template-columns: 1fr; }
+  .products { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+@media (max-width: 700px) { .sim-grid { grid-template-columns: 1fr; } }

@@ -264,8 +264,10 @@ try {
   const result = await midtransAdapter.createDynamicQr(
     { orderId: "INV-001", amount: 25000 },
     midtransConfig,
+    { overrideNotificationUrl: "https://merchant.example/webhooks/midtrans" },
   );
-  console.log(result.qrisString);
+  console.log(result.qrisString);   // payload QRIS mentah
+  console.log(result.qrImageUrl);   // URL PNG QR bila Midtrans mengembalikannya
 } catch (err) {
   // Network error, auth error, atau response tidak valid
   console.error("Gateway error:", err);
@@ -505,8 +507,9 @@ Helper ini berguna kalau kamu ingin:
 - `listProviders()` — return semua provider terdaftar
 
 **Gateway adapters:**
-- `midtransAdapter.createDynamicQr(options, config)` — buat QR via Midtrans API
+- `midtransAdapter.createDynamicQr(options, config, notificationOptions?)` — buat QR via Midtrans API, dengan opsi override/append webhook per transaksi
 - `midtransAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran
+- `midtransAdapter.verifyWebhook(payload, config)` / `parseWebhook(payload, config)` / `getWebhookStatus(payload)` — validasi dan normalisasi webhook Midtrans
 - `xenditAdapter.createDynamicQr(options, config)` — buat QR via Xendit API
 - `xenditAdapter.checkPaymentStatus(gatewayOrderId, config)` — cek status pembayaran
 - `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku API

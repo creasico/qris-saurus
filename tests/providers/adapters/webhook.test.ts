@@ -1,14 +1,16 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { duitkuAdapter } from "../../../src/providers/adapters/duitku";
 import { midtransAdapter } from "../../../src/providers/adapters/midtrans";
 import { xenditAdapter } from "../../../src/providers/adapters/xendit";
+import type { MidtransWebhookPayload } from "../../../src/providers/adapters/types";
 
 // ─── Midtrans ────────────────────────────────────────────────────────────────
 // signature = SHA512(orderId + statusCode + grossAmount + serverKey)
 
 describe("midtransAdapter.verifyWebhook", () => {
   const serverKey = "SB-Mid-server-testkey";
-  const validPayload = {
+  const validPayload: MidtransWebhookPayload = {
     order_id: "INV-001",
     status_code: "200",
     gross_amount: "75000.00",
@@ -40,6 +42,52 @@ describe("midtransAdapter.verifyWebhook", () => {
     expect(
       midtransAdapter.verifyWebhook(validPayload, { serverKey: "wrong-key" }),
     ).toBe(false);
+  });
+});
+
+describe("midtransAdapter.parseWebhook", () => {
+  const serverKey = "SB-Mid-server-testkey";
+  const validPayloadBase: MidtransWebhookPayload = {
+    order_id: "INV-002",
+    status_code: "200",
+    gross_amount: "100000.00",
+    transaction_status: "settlement",
+    fraud_status: "accept",
+    settlement_time: "2026-05-06 21:32:50",
+    transaction_id: "tx-123",
+    payment_type: "qris",
+    acquirer: "gopay",
+  };
+  const validPayload: MidtransWebhookPayload = {
+    ...validPayloadBase,
+    signature_key: createHash("sha512")
+      .update("INV-002" + "200" + "100000.00" + serverKey)
+      .digest("hex"),
+  };
+
+  test("returns normalized paid status for valid settlement webhook", () => {
+    const result = midtransAdapter.parseWebhook(validPayload, { serverKey });
+    expect(result.valid).toBe(true);
+    expect(result.orderId).toBe("INV-002");
+    expect(result.status).toBe("paid");
+    expect(result.amount).toBe(100000);
+    expect(result.transactionId).toBe("tx-123");
+    expect(result.paymentType).toBe("qris");
+    expect(result.acquirer).toBe("gopay");
+    expect(result.paidAt).toBeInstanceOf(Date);
+  });
+
+  test("marks invalid signature without losing normalized status", () => {
+    const tampered = { ...validPayload, signature_key: "deadbeef" };
+    const result = midtransAdapter.parseWebhook(tampered, { serverKey });
+    expect(result.valid).toBe(false);
+    expect(result.status).toBe("paid");
+  });
+
+  test("maps denied status to failed", () => {
+    expect(
+      midtransAdapter.getWebhookStatus({ transaction_status: "deny" }),
+    ).toBe("failed");
   });
 });
 

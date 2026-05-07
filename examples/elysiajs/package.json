@@ -1,0 +1,31 @@
+{
+  "name": "qris-saurus-elysiajs-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"bun run dev:api\" \"bun run dev:client\"",
+    "dev:api": "bun --watch src/index.ts",
+    "dev:client": "bunx vite",
+    "build:client": "bunx vite build",
+    "start": "bun src/index.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysiajs/static": "^1.4.10",
+    "elysia": "^1.1.26",
+    "qris-saurus": "file:../..",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.15.0",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "bun-types": "^1.3.13",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.10"
+  }
+}
