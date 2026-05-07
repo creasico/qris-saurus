@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { getOrder } from "../lib/catalog";
 import { applyWebhookPaymentStatus, cancelOrderPayment, createOrderPayment, expireOrderPayment, getPaymentCapabilities, refundOrderPayment, syncPaymentStatus } from "../lib/payments";
 import { duitkuAdapter, midtransAdapter, xenditAdapter } from "qris-saurus";
+import type { MidtransWebhookPayload } from "qris-saurus";
 import type { AppConfig } from "../types";
 
 function getXenditHeaders(request: Request): Record<string, string | string[] | undefined> {
@@ -162,14 +163,16 @@ export function createPaymentRoutes(config: AppConfig) {
         return { error: { message: "Midtrans gateway is not configured" } };
       }
 
-      const payload = body as Record<string, unknown>;
-      const valid = midtransAdapter.verifyWebhook(payload, { serverKey: config.gateway.midtrans.serverKey });
-      if (!valid) {
+      const payload = body as MidtransWebhookPayload;
+      const parsedWebhook = midtransAdapter.parseWebhook(payload, {
+        serverKey: config.gateway.midtrans.serverKey,
+      });
+      if (!parsedWebhook.valid) {
         set.status = 403;
         return { error: { message: "Invalid Midtrans webhook signature" } };
       }
 
-      const orderId = String(payload.order_id ?? "");
+      const orderId = parsedWebhook.orderId;
       try {
         const order = getOrder(orderId);
         const updatedOrder = applyWebhookPaymentStatus(order, "midtrans", payload);
@@ -231,3 +234,4 @@ export function createPaymentRoutes(config: AppConfig) {
 
   return new Elysia().use(qrisRoutes).use(webhookRoutes);
 }
+
