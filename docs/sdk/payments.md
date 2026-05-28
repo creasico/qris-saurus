@@ -179,11 +179,11 @@ Provider lain memakai env config masing-masing (`XENDIT_SECRET_KEY`, `DUITKU_MER
 | Provider | QRIS direct | VA direct | E-wallet direct | Hosted checkout | Webhook verification |
 | --- | --- | --- | --- | --- | --- |
 | Midtrans | Ya | BCA, BNI, BRI, Permata, CIMB | GoPay, ShopeePay | Snap redirect | SHA512 notification signature |
-| Xendit | Ya | Via hosted invoice | Via hosted invoice | Invoice checkout | Callback token |
+| Xendit | Ya | BCA, BNI, BRI, Mandiri, Permata | OVO, DANA, LinkAja, ShopeePay | Invoice checkout | Callback token |
 | Duitku | Ya | BCA, BNI, BRI, Mandiri, Permata, CIMB | OVO, ShopeePay, DANA, LinkAja | Belum di adapter ini | HMAC-SHA256 callback signature |
 | DOKU | Ya | BCA, BNI, BRI, Mandiri, Permata, CIMB | DANA, ShopeePay | Belum di adapter ini | SNAP signature + timestamp window |
 
-Catatan: Xendit VA/e-wallet saat ini sengaja dibuka hanya melalui hosted invoice (`createCheckout()`), bukan direct `createPayment()`, karena response dan webhook direct per channel berbeda. Duitku VA dan e-wallet direct memakai Direct API `/v2/inquiry` dengan `paymentMethod` resmi (`BC`, `I1`, `BR`, `M2`, `BT`, `B1`, `OV`, `SA`, `DA`, `LF`) dan callback HMAC-SHA256 yang sama. DOKU VA direct membutuhkan `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` dari konfigurasi BIN merchant. DOKU e-wallet direct saat ini hanya mengaktifkan flow redirect DANA dan ShopeePay; OVO tetap guarded karena membutuhkan account binding/tokenization terpisah.
+Catatan: Xendit VA/e-wallet direct memakai Callback Virtual Account dan E-Wallet Charges API dengan channel e-wallet `ID_OVO`, `ID_DANA`, `ID_LINKAJA`, dan `ID_SHOPEEPAY`; CIMB VA tetap guarded karena tidak ada mapping channel direct yang aman di adapter ini. Hosted invoice Xendit tetap tersedia lewat `createCheckout()`. Duitku VA dan e-wallet direct memakai Direct API `/v2/inquiry` dengan `paymentMethod` resmi (`BC`, `I1`, `BR`, `M2`, `BT`, `B1`, `OV`, `SA`, `DA`, `LF`) dan callback HMAC-SHA256 yang sama. DOKU VA direct membutuhkan `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` dari konfigurasi BIN merchant. DOKU e-wallet direct saat ini hanya mengaktifkan flow redirect DANA dan ShopeePay; OVO tetap guarded karena membutuhkan account binding/tokenization terpisah.
 
 ## Referensi dokumentasi provider
 

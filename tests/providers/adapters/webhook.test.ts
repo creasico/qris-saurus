@@ -202,6 +202,58 @@ describe("xenditAdapter.parseWebhook", () => {
     expect(result.paidAt).toBeInstanceOf(Date);
   });
 
+  test("returns normalized Virtual Account callback metadata", () => {
+    const payload = {
+      event: "callback_virtual_account.paid",
+      data: {
+        id: "va_123",
+        external_id: "INV-XEN-VA-1",
+        status: "PAID",
+        amount: 88000,
+        bank_code: "BCA",
+        account_number: "1234567890",
+        created: "2026-05-07T10:00:00.000Z",
+      },
+    };
+    const result = xenditAdapter.parseWebhook(payload, config, { "x-callback-token": "my-token" });
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "xendit",
+      method: "virtual_account",
+      orderId: "INV-XEN-VA-1",
+      gatewayTransactionId: "va_123",
+      status: "paid",
+      amount: 88000,
+      bank: "bca",
+      vaNumber: "1234567890",
+    });
+  });
+
+  test("returns normalized e-wallet callback metadata", () => {
+    const payload = {
+      event: "ewallet.charge.succeeded",
+      data: {
+        id: "ewc_123",
+        reference_id: "INV-XEN-DANA-1",
+        status: "SUCCEEDED",
+        charge_amount: 66000,
+        channel_code: "ID_DANA",
+        updated: "2026-05-07T10:00:00.000Z",
+      },
+    };
+    const result = xenditAdapter.parseWebhook(payload, config, { "x-callback-token": "my-token" });
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "xendit",
+      method: "ewallet",
+      orderId: "INV-XEN-DANA-1",
+      gatewayTransactionId: "ewc_123",
+      status: "paid",
+      amount: 66000,
+      channel: "dana",
+    });
+  });
+
   test("throws error when callbackToken is missing from config", () => {
     const configNoToken = { secretKey: "xnd_test" } as any;
     const payload = { data: { reference_id: "INV-X02", status: "ACTIVE" } };
