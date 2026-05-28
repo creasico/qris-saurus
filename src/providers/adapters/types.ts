@@ -42,6 +42,8 @@ export interface DokuConfig {
   additionalInfo?: Record<string, unknown>;
   /** Merchant webhook path used to verify DOKU notifications, e.g. /webhooks/doku. */
   webhookPath?: string;
+  /** Maximum allowed DOKU webhook timestamp skew in ms. Default: 5 minutes. */
+  webhookMaxTimestampSkewMs?: number;
 }
 
 export interface DuitkuConfig {
@@ -91,6 +93,19 @@ export interface ApiQrResult {
   /** Payment type mentah dari gateway. */
   paymentType?: string;
   raw: unknown;
+}
+
+export type WebhookRawBody = string | Buffer | Uint8Array;
+
+export interface WebhookParseOptions {
+  /** Raw request body used for signature verification. Recommended for DOKU SNAP webhooks. */
+  rawBody?: WebhookRawBody;
+  /** Throw when verification fails. Default: true for strict adapters. */
+  throwOnInvalid?: boolean;
+  /** Override current time for timestamp-skew validation, mainly for tests. */
+  now?: Date;
+  /** Override provider/default timestamp-skew validation window in ms. */
+  maxTimestampSkewMs?: number;
 }
 
 export interface MidtransAction {

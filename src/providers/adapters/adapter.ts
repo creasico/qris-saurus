@@ -1,6 +1,6 @@
 import type { PaymentStatusResult } from "../../core/types";
 import type { PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, WebhookResult } from "./types";
+import type { ApiQrCreateOptions, ApiQrResult, WebhookParseOptions, WebhookResult } from "./types";
 
 /**
  * Unified contract for all payment gateway adapters.
@@ -40,10 +40,12 @@ export interface GatewayAdapter {
    * @param payload  The raw webhook body (parsed JSON).
    * @param config   Provider configuration (used for signature verification).
    * @param headers  Optional HTTP headers (e.g. Xendit's `x-callback-token`).
+   * @param options  Optional verification controls, such as rawBody for signed requests.
    */
   parseWebhook(
     payload: unknown,
     config: unknown,
     headers?: Record<string, string | string[] | undefined>,
+    options?: WebhookParseOptions,
   ): WebhookResult;
 }

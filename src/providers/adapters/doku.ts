@@ -1,13 +1,15 @@
-import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
 import { tokenManager } from "./token-manager";
-import type { ApiQrCreateOptions, ApiQrResult, DokuConfig, WebhookResult } from "./types";
+import type { ApiQrCreateOptions, ApiQrResult, DokuConfig, WebhookParseOptions, WebhookRawBody, WebhookResult } from "./types";
 
 const DEFAULT_CHANNEL_ID = "H2H";
 const DEFAULT_SERVICE_CODE = "47";
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+const DEFAULT_WEBHOOK_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
+const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
   "00": "paid",
@@ -74,14 +76,42 @@ function minifyJson(value: unknown): string {
   return JSON.stringify(value) ?? "";
 }
 
+function bodyToString(body: WebhookRawBody | undefined, fallback: unknown): string {
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return Buffer.from(body).toString("utf8");
+  return minifyJson(fallback);
+}
+
+function sanitizeProviderMessage(value: unknown): string {
+  const message = typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "request failed";
+  return message.replace(/[\r\n\t]+/g, " ").slice(0, MAX_PROVIDER_ERROR_MESSAGE_LENGTH);
+}
+
+function createProviderError(message: string, cause?: unknown): Error {
+  const error = new Error(message);
+  if (cause !== undefined) (error as Error & { cause?: unknown }).cause = cause;
+  return error;
+}
+
 function timestamp(): string {
   return new Date().toISOString();
 }
 
 function randomExternalId(): string {
-  const timePart = Date.now().toString();
-  const randomPart = Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, "0");
-  return `${timePart}${randomPart}`.slice(0, 32);
+  return `${Date.now()}${randomBytes(10).toString("hex")}`.slice(0, 32);
+}
+
+function isTimestampWithinSkew(timestampHeader: string, maxSkewMs: number, now = new Date()): boolean {
+  if (!Number.isFinite(maxSkewMs) || maxSkewMs < 0) return false;
+  const parsed = Date.parse(timestampHeader);
+  if (Number.isNaN(parsed)) return false;
+  return Math.abs(now.getTime() - parsed) <= maxSkewMs;
+}
+
+function invalidWebhookResult(raw: unknown): WebhookResult {
+  return { valid: false, orderId: "", status: "pending", raw };
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -117,15 +147,17 @@ export class DokuAdapter implements GatewayAdapter {
       const contentType = response.headers.get("content-type") ?? "";
 
       if (!contentType.includes("application/json")) {
-        const text = await response.text();
-        throw new Error(`DOKU error [${response.status}]: ${text || response.statusText}`);
+        await response.text();
+        throw new Error(
+          `DOKU error [${response.status}]: ${sanitizeProviderMessage(response.statusText)}`,
+        );
       }
 
       const data = (await response.json()) as T & Record<string, unknown>;
 
       if (!response.ok || !responseCodeOk(data.responseCode)) {
-        const msg = data.responseMessage ?? data.message ?? response.statusText;
-        throw new Error(`DOKU error [${response.status}]: ${msg}`);
+        const msg = sanitizeProviderMessage(data.responseMessage ?? data.message ?? response.statusText);
+        throw createProviderError(`DOKU error [${response.status}]: ${msg}`, data);
       }
 
       return data;
@@ -280,8 +312,9 @@ export class DokuAdapter implements GatewayAdapter {
 
   verifyWebhook(
     payload: unknown,
-    config: Pick<DokuConfig, "clientSecret" | "webhookPath">,
+    config: Pick<DokuConfig, "clientSecret" | "webhookMaxTimestampSkewMs" | "webhookPath">,
     headers: Record<string, string | string[] | undefined> = {},
+    options: WebhookParseOptions = {},
   ): boolean {
     const signature = this.getHeader(headers, "x-signature");
     const timestampHeader = this.getHeader(headers, "x-timestamp");
@@ -289,12 +322,19 @@ export class DokuAdapter implements GatewayAdapter {
 
     if (!signature || !timestampHeader || !authorization || !config.webhookPath) return false;
 
+    const maxSkewMs = options.maxTimestampSkewMs
+      ?? config.webhookMaxTimestampSkewMs
+      ?? DEFAULT_WEBHOOK_TIMESTAMP_SKEW_MS;
+    if (!isTimestampWithinSkew(timestampHeader, maxSkewMs, options.now)) return false;
+
     const token = authorization.replace(/^Bearer\s+/i, "");
+    if (!token) return false;
+
     const stringToSign = [
       "POST",
       config.webhookPath,
       token,
-      hexSha256(minifyJson(payload)),
+      hexSha256(bodyToString(options.rawBody, payload)),
       timestampHeader,
     ].join(":");
     const expected = hmacSha512Base64(config.clientSecret, stringToSign);
@@ -305,9 +345,17 @@ export class DokuAdapter implements GatewayAdapter {
     payload: unknown,
     config: DokuConfig,
     headers?: Record<string, string | string[] | undefined>,
+    options: WebhookParseOptions = {},
   ): WebhookResult {
     if (payload === null || typeof payload !== "object") {
-      return { valid: false, orderId: "", status: "pending", raw: payload };
+      if (options.throwOnInvalid === false) return invalidWebhookResult(payload);
+      throw new Error("DOKU webhook payload must be an object");
+    }
+
+    const valid = this.verifyWebhook(payload, config, headers, options);
+    if (!valid) {
+      if (options.throwOnInvalid === false) return invalidWebhookResult(payload);
+      throw new Error("DOKU webhook verification failed");
     }
 
     const raw = payload as Record<string, unknown>;
@@ -325,7 +373,7 @@ export class DokuAdapter implements GatewayAdapter {
     if (raw.additionalInfo && typeof raw.additionalInfo === "object") providerMeta.additionalInfo = raw.additionalInfo;
 
     return {
-      valid: this.verifyWebhook(payload, config, headers),
+      valid: true,
       orderId: String(raw.originalPartnerReferenceNo ?? raw.partnerReferenceNo ?? ""),
       status,
       ...(amount !== undefined ? { amount } : {}),

@@ -241,10 +241,18 @@ describe("duitkuAdapter.parseWebhook", () => {
     expect(result.status).toBe("failed");
   });
 
-  test("returns valid=false when signature is wrong", () => {
+  test("throws when signature is wrong by default", () => {
     const payload = { ...validPayload, signature: "deadbeef" };
-    const result = duitkuAdapter.parseWebhook(payload, config);
+    expect(() => duitkuAdapter.parseWebhook(payload, config)).toThrow(/verification failed/);
+  });
+
+  test("can return a safe invalid result when explicitly requested", () => {
+    const payload = { ...validPayload, signature: "deadbeef" };
+    const result = duitkuAdapter.parseWebhook(payload, config, undefined, { throwOnInvalid: false });
     expect(result.valid).toBe(false);
+    expect(result.orderId).toBe("");
+    expect(result.status).toBe("pending");
+    expect(result.amount).toBeUndefined();
   });
 });
 
@@ -268,12 +276,16 @@ describe("dokuAdapter.parseWebhook", () => {
     paidTime: "2026-05-07T10:00:05+07:00",
     amount: { value: "50000.00", currency: "IDR" },
   };
+  const now = new Date("2026-05-07T03:00:30.000Z");
 
   function signedHeaders(body: unknown) {
-    const timestamp = "2026-05-07T03:00:00.000Z";
+    return signedHeadersForBodyString(JSON.stringify(body));
+  }
+
+  function signedHeadersForBodyString(body: string, timestamp = "2026-05-07T03:00:00.000Z") {
     const token = "access-token-123";
     const digest = createHash("sha256")
-      .update(JSON.stringify(body))
+      .update(body)
       .digest("hex")
       .toLowerCase();
     const stringToSign = `POST:/webhooks/doku:${token}:${digest}:${timestamp}`;
@@ -288,7 +300,7 @@ describe("dokuAdapter.parseWebhook", () => {
   }
 
   test("returns normalized paid result with valid SNAP signature", () => {
-    const result = dokuAdapter.parseWebhook(payload, config, signedHeaders(payload));
+    const result = dokuAdapter.parseWebhook(payload, config, signedHeaders(payload), { now });
     expect(result.valid).toBe(true);
     expect(result.orderId).toBe("INV-DOKU-001");
     expect(result.status).toBe("paid");
@@ -299,15 +311,40 @@ describe("dokuAdapter.parseWebhook", () => {
 
   test("maps latestTransactionStatus 05 to cancelled", () => {
     const cancelledPayload = { ...payload, latestTransactionStatus: "05" };
-    const result = dokuAdapter.parseWebhook(cancelledPayload, config, signedHeaders(cancelledPayload));
+    const result = dokuAdapter.parseWebhook(cancelledPayload, config, signedHeaders(cancelledPayload), { now });
     expect(result.valid).toBe(true);
     expect(result.status).toBe("cancelled");
   });
 
-  test("returns valid=false when signature header is wrong", () => {
-    const headers = { ...signedHeaders(payload), "x-signature": "wrong" };
-    const result = dokuAdapter.parseWebhook(payload, config, headers);
-    expect(result.valid).toBe(false);
+  test("accepts signatures computed from the raw request body", () => {
+    const rawBody = JSON.stringify(payload, null, 2);
+    const result = dokuAdapter.parseWebhook(payload, config, signedHeadersForBodyString(rawBody), {
+      now,
+      rawBody,
+    });
+    expect(result.valid).toBe(true);
     expect(result.status).toBe("paid");
+  });
+
+  test("rejects webhook replay outside the timestamp window", () => {
+    const headers = signedHeadersForBodyString(JSON.stringify(payload), "2026-05-07T02:00:00.000Z");
+    expect(() => dokuAdapter.parseWebhook(payload, config, headers, { now })).toThrow(/verification failed/);
+  });
+
+  test("throws when signature header is wrong by default", () => {
+    const headers = { ...signedHeaders(payload), "x-signature": "wrong" };
+    expect(() => dokuAdapter.parseWebhook(payload, config, headers, { now })).toThrow(/verification failed/);
+  });
+
+  test("can return a safe invalid result when explicitly requested", () => {
+    const headers = { ...signedHeaders(payload), "x-signature": "wrong" };
+    const result = dokuAdapter.parseWebhook(payload, config, headers, {
+      now,
+      throwOnInvalid: false,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.orderId).toBe("");
+    expect(result.status).toBe("pending");
+    expect(result.amount).toBeUndefined();
   });
 });

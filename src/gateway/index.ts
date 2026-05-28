@@ -8,6 +8,7 @@ import type {
   MidtransConfig,
   MidtransNotificationOptions,
   RefundOptions,
+  WebhookParseOptions,
   WebhookResult,
 } from "../providers/adapters/types";
 import { XenditAdapter } from "../providers/adapters/xendit";
@@ -247,9 +248,10 @@ class Gateway {
   verify(
     payload: unknown,
     headers?: Record<string, string | string[] | undefined>,
+    options?: WebhookParseOptions,
   ): WebhookResult {
     const { config, adapter } = this.assertConfigured();
-    return adapter.parseWebhook(payload, config, headers);
+    return adapter.parseWebhook(payload, config, headers, options);
   }
 
   toDynamic(

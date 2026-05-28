@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig, WebhookResult } from "./types";
+import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig, WebhookParseOptions, WebhookResult } from "./types";
 
 // transactionStatus: 00 success, 01 process/pending, 02 failed/expired.
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -19,6 +19,7 @@ const CALLBACK_STATUS_MAP: Record<string, PaymentStatusCode> = {
 
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
 const DEFAULT_QRIS_PAYMENT_METHOD = "SP";
+const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
 function hmacSha256(input: string, key: string): string {
   return createHmac("sha256", key).update(input).digest("hex");
@@ -37,6 +38,23 @@ function parseAmount(value: unknown): number | undefined {
   if (typeof value !== "string") return undefined;
   const parsed = parseFloat(value);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function sanitizeProviderMessage(value: unknown): string {
+  const message = typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : "request failed";
+  return message.replace(/[\r\n\t]+/g, " ").slice(0, MAX_PROVIDER_ERROR_MESSAGE_LENGTH);
+}
+
+function createProviderError(message: string, cause?: unknown): Error {
+  const error = new Error(message);
+  if (cause !== undefined) (error as Error & { cause?: unknown }).cause = cause;
+  return error;
+}
+
+function invalidWebhookResult(raw: unknown): WebhookResult {
+  return { valid: false, orderId: "", status: "pending", raw };
 }
 
 export class DuitkuAdapter implements GatewayAdapter {
@@ -63,15 +81,17 @@ export class DuitkuAdapter implements GatewayAdapter {
 
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
-        const text = await response.text();
-        throw new Error(`Duitku error [${response.status}]: ${text || response.statusText}`);
+        await response.text();
+        throw new Error(
+          `Duitku error [${response.status}]: ${sanitizeProviderMessage(response.statusText)}`,
+        );
       }
 
       const data = (await response.json()) as T & Record<string, unknown>;
 
       if (!response.ok) {
-        const msg = data.statusMessage ?? data.message ?? response.statusText;
-        throw new Error(`Duitku error [${response.status}]: ${msg}`);
+        const msg = sanitizeProviderMessage(data.statusMessage ?? data.message ?? response.statusText);
+        throw createProviderError(`Duitku error [${response.status}]: ${msg}`, data);
       }
 
       return data;
@@ -120,8 +140,9 @@ export class DuitkuAdapter implements GatewayAdapter {
 
     const statusCode = String(data.statusCode ?? "");
     if (statusCode !== "00") {
-      throw new Error(
-        `Duitku inquiry gagal [${statusCode}]: ${data.statusMessage ?? "unknown error"}`,
+      throw createProviderError(
+        `Duitku inquiry gagal [${statusCode}]: ${sanitizeProviderMessage(data.statusMessage)}`,
+        data,
       );
     }
 
@@ -179,9 +200,11 @@ export class DuitkuAdapter implements GatewayAdapter {
     config: Pick<DuitkuConfig, "merchantCode" | "merchantKey">,
   ): boolean {
     const merchantCode = String(payload.merchantCode ?? "");
+    if (merchantCode !== config.merchantCode) return false;
+
     const amount = String(payload.amount ?? "");
     const merchantOrderId = String(payload.merchantOrderId ?? "");
-    const expected = hmacSha256(merchantCode + amount + merchantOrderId, config.merchantKey);
+    const expected = hmacSha256(config.merchantCode + amount + merchantOrderId, config.merchantKey);
     const providedSignature = String(payload.signature ?? "");
     return constantTimeEqual(providedSignature, expected);
   }
@@ -189,18 +212,21 @@ export class DuitkuAdapter implements GatewayAdapter {
   parseWebhook(
     payload: unknown,
     config: DuitkuConfig,
+    _headers?: Record<string, string | string[] | undefined>,
+    options: WebhookParseOptions = {},
   ): WebhookResult {
     if (payload === null || typeof payload !== "object") {
-      return {
-        valid: false,
-        orderId: "",
-        status: "pending",
-        raw: payload,
-      };
+      if (options.throwOnInvalid === false) return invalidWebhookResult(payload);
+      throw new Error("Duitku webhook payload must be an object");
     }
 
     const raw = payload as Record<string, unknown>;
     const valid = this.verifyWebhook(raw, config);
+    if (!valid) {
+      if (options.throwOnInvalid === false) return invalidWebhookResult(payload);
+      throw new Error("Duitku webhook verification failed");
+    }
+
     const statusCode = String(raw.resultCode ?? raw.statusCode ?? "01");
     const amount = parseAmount(raw.amount);
 
@@ -211,7 +237,7 @@ export class DuitkuAdapter implements GatewayAdapter {
     if (typeof raw.settlementDate === "string") providerMeta.settlementDate = raw.settlementDate;
 
     return {
-      valid,
+      valid: true,
       orderId: String(raw.merchantOrderId ?? ""),
       status: CALLBACK_STATUS_MAP[statusCode] ?? "pending",
       ...(amount !== undefined ? { amount } : {}),

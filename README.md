@@ -631,9 +631,11 @@ const finalStatus = await gateway.pollPaymentStatus(chargeResult.gatewayOrderId,
 
 // 4. Verify webhook/callback provider
 const verifyResult = gateway.verify(webhookPayload, headers); // sync
+// DOKU: pass rawBody when your framework exposes it.
+const dokuVerifyResult = gateway.verify(webhookPayload, headers, { rawBody });
 ```
 
-Status hasil normalisasi selalu memakai union berikut: `pending`, `paid`, `refunded`, `expired`, `failed`, atau `cancelled`. Simpan `gatewayOrderId` dari hasil `charge()` karena beberapa provider mengembalikan ID transaksi gateway yang berbeda dari order ID merchant.
+Status hasil normalisasi selalu memakai union berikut: `pending`, `paid`, `refunded`, `expired`, `failed`, atau `cancelled`. Simpan `gatewayOrderId` dari hasil `charge()` karena beberapa provider mengembalikan ID transaksi gateway yang berbeda dari order ID merchant. Adapter gateway hanya untuk server-side; jangan kirim secret/private key ke browser dan jangan log config, access token, atau raw error provider.
 
 #### Contoh konfigurasi Duitku
 
@@ -649,7 +651,7 @@ gateway.configure({
 });
 ```
 
-Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`.
+Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
 
 #### Contoh konfigurasi DOKU
 
@@ -672,7 +674,7 @@ gateway.configure({
 });
 ```
 
-DOKU adapter menjalankan flow SNAP: ambil access token B2B dengan RSA-SHA256, generate QRIS MPM dengan Bearer token, lalu query status dengan signature HMAC-SHA512. Untuk webhook DOKU, pastikan `webhookPath` sama persis dengan path endpoint publik yang menerima callback, karena path tersebut menjadi bagian dari string-to-sign.
+DOKU adapter menjalankan flow SNAP: ambil access token B2B dengan RSA-SHA256, generate QRIS MPM dengan Bearer token, lalu query status dengan signature HMAC-SHA512. Untuk webhook DOKU, pastikan `webhookPath` sama persis dengan path endpoint publik yang menerima callback, karena path tersebut menjadi bagian dari string-to-sign. Verifikasi webhook menolak timestamp di luar 5 menit secara default (`webhookMaxTimestampSkewMs` atau option `maxTimestampSkewMs`) dan sebaiknya diberi `rawBody` supaya hash signature mengikuti body asli dari DOKU. Seperti Duitku, `parseWebhook()` melempar error bila signature/timestamp tidak valid; `{ throwOnInvalid: false }` mengembalikan hasil aman tanpa status/order palsu.
 
 ### Mendukung Custom Provider (Scaling)
 
