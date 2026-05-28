@@ -724,7 +724,8 @@ Selain QRIS gateway API lama (`charge()` / `createDynamicQr()`), `qris-saurus` s
 
 - `gateway.capabilities()` untuk membaca method yang didukung provider.
 - `gateway.createPayment()` untuk direct API/custom UI (`qris`, `virtual_account`, `ewallet`).
-- `gateway.createCheckout()` untuk hosted checkout/payment page provider.
+- Helper typed: `createQrisPayment()`, `createVirtualAccount()`, `createEwallet()`.
+- `gateway.createCheckout()` / `gateway.createHostedCheckout()` untuk hosted checkout/payment page provider.
 - Webhook tetap menjadi source of truth; redirect dan polling hanya UX/fallback.
 
 ```ts
@@ -734,12 +735,10 @@ gateway.configure({
   sandbox: true,
 });
 
-const va = await gateway.createPayment({
-  method: "virtual_account",
+const va = await gateway.createVirtualAccount({
   orderId: "INV-VA-001",
   amount: 50_000,
   bank: "bca",
-  customerEmail: "customer@example.com",
 });
 
 const checkout = await gateway.createCheckout({

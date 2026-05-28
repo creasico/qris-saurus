@@ -10,15 +10,16 @@ This document explains the multi-method gateway direction in `qris-saurus`: **di
 - Always verify provider webhook signatures/tokens before updating orders.
 - The SDK does not ship a payment UI; it normalizes provider requests and responses.
 - Use `createPayment()` for direct API/custom UI payments.
-- Use `createCheckout()` for provider-hosted payment pages.
+- Use typed helpers `createQrisPayment()`, `createVirtualAccount()`, and `createEwallet()` for more specific input/output types.
+- Use `createCheckout()` or the `createHostedCheckout()` alias for provider-hosted payment pages.
 - Store `gatewayOrderId`/provider references for status checks and reconciliation.
 
 ## Direct Payment vs Hosted Checkout
 
 | Flow | Payment UI owner | Method | Main return value | Use case |
 | --- | --- | --- | --- | --- |
-| Direct payment | Your merchant app | `gateway.createPayment()` | `qrisString`, `vaNumber`, `deeplinkUrl`, `paymentUrl` | Custom checkout, POS, mobile apps |
-| Hosted checkout | Provider | `gateway.createCheckout()` | `checkoutUrl` | Fast integration, provider displays method selection |
+| Direct payment | Your merchant/app UI | `gateway.createPayment()` or typed helpers | `qrisString`, `vaNumber`, `deeplinkUrl`, `paymentUrl` | Custom checkout, POS, mobile app |
+| Hosted checkout | Provider | `gateway.createCheckout()` / `gateway.createHostedCheckout()` | `checkoutUrl` | Fast integration, provider shows payment choices |
 
 Safe flow:
 
@@ -58,6 +59,22 @@ console.log(capabilities.ewallet?.channels);
 ```
 
 If a method is not supported, `createPayment()` rejects with `ProviderCapabilityError` before sending any request to the provider.
+
+## Typed Helpers
+
+Typed helpers wrap `createPayment()` and `createCheckout()` so TypeScript knows the exact request/result shape.
+
+```ts
+const qris = await gateway.createQrisPayment({ orderId: "INV-001", amount: 50_000 });
+const va = await gateway.createVirtualAccount({ orderId: "INV-002", amount: 50_000, bank: "bca" });
+const ewallet = await gateway.createEwallet({ orderId: "INV-003", amount: 50_000, channel: "gopay" });
+const checkout = await gateway.createHostedCheckout({ orderId: "INV-004", amount: 50_000 });
+
+console.log(qris.qrisString);
+console.log(va.vaNumber);
+console.log(ewallet.deeplinkUrl ?? ewallet.paymentUrl);
+console.log(checkout.checkoutUrl);
+```
 
 ## createPayment()
 
@@ -143,6 +160,19 @@ if (result.valid && result.status === "paid") {
 ```
 
 For providers that require the raw body, such as DOKU SNAP, pass the raw body through the existing webhook options for that provider/adapter.
+
+## Sandbox Smoke Test
+
+The sandbox script is opt-in and does not run in CI by default. It creates real sandbox transactions, so the explicit flag is required.
+
+```bash
+RUN_PAYMENT_SANDBOX=true \
+SANDBOX_PROVIDER=midtrans \
+MIDTRANS_SERVER_KEY=SB-Mid-server-... \
+bun run test:sandbox:payments
+```
+
+Other providers use their own env config (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_CODE`/`DUITKU_MERCHANT_KEY`, or `DOKU_CLIENT_ID`/`DOKU_CLIENT_SECRET`/`DOKU_PRIVATE_KEY`).
 
 ## Current Support
 

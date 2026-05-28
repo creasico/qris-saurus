@@ -127,6 +127,37 @@ describe("MidtransAdapter.createPayment", () => {
   });
 });
 
+describe("MidtransAdapter.checkPaymentStatus", () => {
+  test("returns normalized method, gateway id, bank, and VA details", async () => {
+    const adapter = new MidtransAdapter();
+    mockFetch(() => ({
+      transaction_status: "settlement",
+      transaction_id: "tx-status-1",
+      order_id: "INV-STATUS-VA-1",
+      gross_amount: "50000.00",
+      payment_type: "bank_transfer",
+      settlement_time: "2026-05-06 21:32:50",
+      va_numbers: [{ bank: "bca", va_number: "1234567890" }],
+    }));
+
+    const result = await adapter.checkPaymentStatus("INV-STATUS-VA-1", {
+      serverKey: "SB-Mid-server-test",
+      sandbox: true,
+    });
+
+    expect(result).toMatchObject({
+      provider: "midtrans",
+      orderId: "INV-STATUS-VA-1",
+      status: "paid",
+      gatewayTransactionId: "tx-status-1",
+      method: "virtual_account",
+      bank: "bca",
+      vaNumber: "1234567890",
+      amount: 50000,
+    });
+  });
+});
+
 describe("MidtransAdapter.createCheckout", () => {
   test("creates a Snap hosted checkout and forwards notification override headers", async () => {
     const adapter = new MidtransAdapter();

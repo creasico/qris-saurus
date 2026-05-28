@@ -4,12 +4,18 @@ import type {
   ApiQrResult,
   CheckoutResult,
   CreateCheckoutRequest,
+  CreateEwalletPaymentRequest,
   CreatePaymentRequest,
+  CreateQrisPaymentRequest,
+  CreateVirtualAccountPaymentRequest,
   DokuConfig,
   DuitkuConfig,
+  EwalletPaymentResult,
   MidtransConfig,
   PaymentResult,
+  QrisPaymentResult,
   ProviderCapabilities,
+  VirtualAccountPaymentResult,
   WebhookResult,
   XenditConfig,
 } from "../providers/adapters/types";
@@ -36,7 +42,13 @@ export interface ChargeOptions {
 
 export type GatewayChargeResult = ApiQrResult;
 export type GatewayCreatePaymentRequest = CreatePaymentRequest;
+export type GatewayCreateQrisPaymentRequest = Omit<CreateQrisPaymentRequest, "method">;
+export type GatewayCreateVirtualAccountRequest = Omit<CreateVirtualAccountPaymentRequest, "method">;
+export type GatewayCreateEwalletRequest = Omit<CreateEwalletPaymentRequest, "method">;
 export type GatewayPaymentResult = PaymentResult;
+export type GatewayQrisPaymentResult = QrisPaymentResult;
+export type GatewayVirtualAccountPaymentResult = VirtualAccountPaymentResult;
+export type GatewayEwalletPaymentResult = EwalletPaymentResult;
 export type GatewayCreateCheckoutRequest = CreateCheckoutRequest;
 export type GatewayCheckoutResult = CheckoutResult;
 export type GatewayProviderCapabilities = ProviderCapabilities;

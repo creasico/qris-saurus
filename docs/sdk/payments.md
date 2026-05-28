@@ -10,15 +10,16 @@ Dokumen ini menjelaskan arah multi-method gateway di `qris-saurus`: **direct pay
 - Semua webhook harus diverifikasi dengan signature/token provider sebelum order di-update.
 - SDK tidak menyediakan UI bawaan; SDK hanya menormalisasi request/response provider.
 - Gunakan `createPayment()` untuk pembayaran direct API/custom UI.
-- Gunakan `createCheckout()` untuk payment page/hosted UI provider.
+- Gunakan helper typed `createQrisPayment()`, `createVirtualAccount()`, dan `createEwallet()` agar input/output lebih spesifik.
+- Gunakan `createCheckout()` atau alias `createHostedCheckout()` untuk payment page/hosted UI provider.
 - Simpan `gatewayOrderId`/reference provider untuk status check dan reconciliation.
 
 ## Direct payment vs hosted checkout
 
 | Flow | Siapa yang menyediakan UI | Method | Return utama | Kapan dipakai |
 | --- | --- | --- | --- | --- |
-| Direct payment | Merchant/app kamu | `gateway.createPayment()` | `qrisString`, `vaNumber`, `deeplinkUrl`, `paymentUrl` | Checkout custom, POS, app mobile |
-| Hosted checkout | Provider | `gateway.createCheckout()` | `checkoutUrl` | Integrasi cepat, provider menampilkan pilihan metode |
+| Direct payment | Merchant/app kamu | `gateway.createPayment()` atau helper typed | `qrisString`, `vaNumber`, `deeplinkUrl`, `paymentUrl` | Checkout custom, POS, app mobile |
+| Hosted checkout | Provider | `gateway.createCheckout()` / `gateway.createHostedCheckout()` | `checkoutUrl` | Integrasi cepat, provider menampilkan pilihan metode |
 
 Flow aman:
 
@@ -58,6 +59,22 @@ console.log(capabilities.ewallet?.channels);
 ```
 
 Jika method tidak didukung, `createPayment()` akan menolak request dengan `ProviderCapabilityError` sebelum request dikirim ke provider.
+
+## Helper typed
+
+Helper typed adalah wrapper di atas `createPayment()` dan `createCheckout()` supaya TypeScript langsung tahu bentuk request/result yang tepat.
+
+```ts
+const qris = await gateway.createQrisPayment({ orderId: "INV-001", amount: 50_000 });
+const va = await gateway.createVirtualAccount({ orderId: "INV-002", amount: 50_000, bank: "bca" });
+const ewallet = await gateway.createEwallet({ orderId: "INV-003", amount: 50_000, channel: "gopay" });
+const checkout = await gateway.createHostedCheckout({ orderId: "INV-004", amount: 50_000 });
+
+console.log(qris.qrisString);
+console.log(va.vaNumber);
+console.log(ewallet.deeplinkUrl ?? ewallet.paymentUrl);
+console.log(checkout.checkoutUrl);
+```
 
 ## createPayment()
 
@@ -143,6 +160,19 @@ if (result.valid && result.status === "paid") {
 ```
 
 Untuk provider yang membutuhkan raw body (misalnya DOKU SNAP), teruskan raw body melalui opsi webhook yang sudah tersedia di adapter/provider terkait.
+
+## Sandbox smoke test
+
+Script sandbox bersifat opt-in dan tidak berjalan otomatis di CI. Ia membuat transaksi sandbox nyata, jadi wajib set flag eksplisit.
+
+```bash
+RUN_PAYMENT_SANDBOX=true \
+SANDBOX_PROVIDER=midtrans \
+MIDTRANS_SERVER_KEY=SB-Mid-server-... \
+bun run test:sandbox:payments
+```
+
+Provider lain memakai env config masing-masing (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_CODE`/`DUITKU_MERCHANT_KEY`, atau `DOKU_CLIENT_ID`/`DOKU_CLIENT_SECRET`/`DOKU_PRIVATE_KEY`).
 
 ## Dukungan saat ini
 

@@ -487,7 +487,8 @@ Beyond the legacy QRIS gateway API (`charge()` / `createDynamicQr()`), `qris-sau
 
 - `gateway.capabilities()` reads provider-supported payment methods.
 - `gateway.createPayment()` handles direct API/custom UI payments (`qris`, `virtual_account`, `ewallet`).
-- `gateway.createCheckout()` handles provider-hosted checkout/payment pages.
+- Typed helpers: `createQrisPayment()`, `createVirtualAccount()`, `createEwallet()`.
+- `gateway.createCheckout()` / `gateway.createHostedCheckout()` handles provider-hosted checkout/payment pages.
 - Webhooks remain the source of truth; redirects and polling are UX/fallback only.
 
 ```ts
@@ -497,12 +498,10 @@ gateway.configure({
   sandbox: true,
 });
 
-const va = await gateway.createPayment({
-  method: "virtual_account",
+const va = await gateway.createVirtualAccount({
   orderId: "INV-VA-001",
   amount: 50_000,
   bank: "bca",
-  customerEmail: "customer@example.com",
 });
 
 const checkout = await gateway.createCheckout({

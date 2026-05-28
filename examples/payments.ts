@@ -14,8 +14,7 @@ async function main() {
 
   console.log("Capabilities:", gateway.capabilities());
 
-  const vaPayment = await gateway.createPayment({
-    method: "virtual_account",
+  const va = await gateway.createVirtualAccount({
     orderId: `INV-VA-${Date.now()}`,
     amount: 50_000,
     bank: "bca",
@@ -23,11 +22,9 @@ async function main() {
     notificationUrl: "https://merchant.example/webhooks/midtrans",
   });
 
-  if (vaPayment.method === "virtual_account") {
-    console.log("VA number:", vaPayment.vaNumber);
-  }
+  console.log("VA number:", va.vaNumber);
 
-  const checkout = await gateway.createCheckout({
+  const checkout = await gateway.createHostedCheckout({
     orderId: `INV-SNAP-${Date.now()}`,
     amount: 75_000,
     enabledMethods: ["qris", "virtual_account", "ewallet"],

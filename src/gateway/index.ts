@@ -7,11 +7,17 @@ import type {
   ApiQrCreateOptions,
   CheckoutResult,
   CreateCheckoutRequest,
+  CreateEwalletPaymentRequest,
   CreatePaymentRequest,
+  CreateQrisPaymentRequest,
+  CreateVirtualAccountPaymentRequest,
+  EwalletPaymentResult,
   MidtransConfig,
   MidtransNotificationOptions,
   PaymentResult,
+  QrisPaymentResult,
   ProviderCapabilities,
+  VirtualAccountPaymentResult,
   RefundOptions,
   WebhookParseOptions,
   WebhookResult,
@@ -335,6 +341,40 @@ class Gateway {
       ...(qr.acquirer ? { acquirer: qr.acquirer } : {}),
       raw: qr.raw,
     };
+  }
+
+  async createQrisPayment(
+    request: Omit<CreateQrisPaymentRequest, "method">,
+  ): Promise<QrisPaymentResult> {
+    const result = await this.createPayment({ ...request, method: "qris" });
+    if (result.method !== "qris") {
+      throw new ProviderCapabilityError("Provider returned a non-QRIS payment result.");
+    }
+    return result;
+  }
+
+  async createVirtualAccount(
+    request: Omit<CreateVirtualAccountPaymentRequest, "method">,
+  ): Promise<VirtualAccountPaymentResult> {
+    const result = await this.createPayment({ ...request, method: "virtual_account" });
+    if (result.method !== "virtual_account") {
+      throw new ProviderCapabilityError("Provider returned a non-virtual-account payment result.");
+    }
+    return result;
+  }
+
+  async createEwallet(
+    request: Omit<CreateEwalletPaymentRequest, "method">,
+  ): Promise<EwalletPaymentResult> {
+    const result = await this.createPayment({ ...request, method: "ewallet" });
+    if (result.method !== "ewallet") {
+      throw new ProviderCapabilityError("Provider returned a non-e-wallet payment result.");
+    }
+    return result;
+  }
+
+  async createHostedCheckout(request: CreateCheckoutRequest): Promise<CheckoutResult> {
+    return this.createCheckout(request);
   }
 
   async createCheckout(request: CreateCheckoutRequest): Promise<CheckoutResult> {

@@ -82,6 +82,20 @@ function buildMidtransSignature(
     .digest("hex");
 }
 
+function normalizeMidtransMethod(paymentType: unknown): "qris" | "virtual_account" | "ewallet" | undefined {
+  const type = String(paymentType ?? "").toLowerCase();
+  if (type === "qris") return "qris";
+  if (type === "bank_transfer" || type === "permata") return "virtual_account";
+  if (type === "gopay" || type === "shopeepay") return "ewallet";
+  return undefined;
+}
+
+function normalizeMidtransBank(data: Pick<MidtransChargeResponse, "payment_type" | "va_numbers">): "bca" | "bni" | "bri" | "cimb" | "permata" | undefined {
+  if (data.payment_type === "permata") return "permata";
+  const bank = data.va_numbers?.[0]?.bank;
+  return bank === "bca" || bank === "bni" || bank === "bri" || bank === "cimb" ? bank : undefined;
+}
+
 function mapMidtransTransactionStatus(payload: MidtransWebhookPayload): PaymentStatusCode {
   const transactionStatus = String(payload.transaction_status ?? "pending").toLowerCase();
   const fraudStatus = typeof payload.fraud_status === "string"
@@ -448,11 +462,24 @@ export class MidtransAdapter implements GatewayAdapter {
         ? new Date(data.settlement_time)
         : undefined;
 
+    const method = normalizeMidtransMethod(data.payment_type);
+    const bank = method === "virtual_account" ? normalizeMidtransBank(data) : undefined;
+    const channel = method === "ewallet" && (data.payment_type === "gopay" || data.payment_type === "shopeepay")
+      ? data.payment_type
+      : undefined;
+    const vaNumber = data.va_numbers?.[0]?.va_number ?? data.permata_va_number;
+
     return {
+      provider: "midtrans",
       orderId,
       status,
       ...(grossAmount !== undefined && { amount: grossAmount }),
       ...(paidAt !== undefined && { paidAt }),
+      ...(typeof data.transaction_id === "string" ? { gatewayTransactionId: data.transaction_id } : {}),
+      ...(method !== undefined ? { method } : {}),
+      ...(bank !== undefined ? { bank } : {}),
+      ...(channel !== undefined ? { channel } : {}),
+      ...(vaNumber !== undefined ? { vaNumber } : {}),
       raw: data,
     };
   }
@@ -505,6 +532,11 @@ export class MidtransAdapter implements GatewayAdapter {
       ? parseMidtransDate(payload.settlement_time)
       : undefined;
 
+    const method = normalizeMidtransMethod(payload.payment_type);
+    const channel = method === "ewallet" && (payload.payment_type === "gopay" || payload.payment_type === "shopeepay")
+      ? payload.payment_type
+      : undefined;
+
     const providerMeta: Record<string, unknown> = {};
     if (typeof payload.fraud_status === "string") providerMeta.fraudStatus = payload.fraud_status;
     if (typeof payload.transaction_id === "string") providerMeta.transactionId = payload.transaction_id;
@@ -512,11 +544,15 @@ export class MidtransAdapter implements GatewayAdapter {
     if (typeof payload.acquirer === "string") providerMeta.acquirer = payload.acquirer;
 
     return {
+      provider: "midtrans",
       valid,
       orderId,
       status,
       ...(amount !== undefined && !Number.isNaN(amount) ? { amount } : {}),
       ...(paidAt !== undefined ? { paidAt } : {}),
+      ...(typeof payload.transaction_id === "string" ? { gatewayTransactionId: payload.transaction_id } : {}),
+      ...(method !== undefined ? { method } : {}),
+      ...(channel !== undefined ? { channel } : {}),
       ...(Object.keys(providerMeta).length > 0 ? { providerMeta } : {}),
       raw: payload,
     };

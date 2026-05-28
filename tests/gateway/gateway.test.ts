@@ -443,6 +443,13 @@ describe("gateway.useAdapter", () => {
     ).rejects.toThrow(ProviderCapabilityError);
   });
 
+  test("createQrisPayment helper returns a typed QRIS result", async () => {
+    gateway.useAdapter("mock", mockAdapter, { apiKey: "test" });
+    const result = await gateway.createQrisPayment({ orderId: "INV-QR-HELPER", amount: 50000 });
+    expect(result.method).toBe("qris");
+    expect(result.qrisString).toBe("mock-qr-string");
+  });
+
   test("createPayment delegates multi-method requests when adapter declares support", async () => {
     const adapter = {
       ...mockAdapter,
@@ -461,13 +468,38 @@ describe("gateway.useAdapter", () => {
       }),
     };
     gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
-    const result = await gateway.createPayment({
-      method: "virtual_account",
+    const result = await gateway.createVirtualAccount({
       orderId: "INV-VA-002",
       amount: 50000,
       bank: "bca",
     });
     expect(result).toMatchObject({ method: "virtual_account", vaNumber: "1234567890" });
+  });
+
+  test("createEwallet helper returns a typed e-wallet result", async () => {
+    const adapter = {
+      ...mockAdapter,
+      capabilities: () => ({ ewallet: { channels: ["gopay" as const] } }),
+      createPayment: async () => ({
+        provider: "mockpay",
+        method: "ewallet" as const,
+        orderId: "INV-EW-001",
+        gatewayOrderId: "GW-EW-001",
+        status: "pending" as const,
+        amount: 50000,
+        currency: "IDR" as const,
+        channel: "gopay" as const,
+        deeplinkUrl: "https://pay.example/gopay",
+        raw: {},
+      }),
+    };
+    gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
+    const result = await gateway.createEwallet({
+      orderId: "INV-EW-001",
+      amount: 50000,
+      channel: "gopay",
+    });
+    expect(result).toMatchObject({ method: "ewallet", deeplinkUrl: "https://pay.example/gopay" });
   });
 
   test("createPayment enforces adapter capabilities before delegation", async () => {
@@ -502,7 +534,7 @@ describe("gateway.useAdapter", () => {
       }),
     };
     gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
-    const result = await gateway.createCheckout({ orderId: "INV-CO-001", amount: 50000 });
+    const result = await gateway.createHostedCheckout({ orderId: "INV-CO-001", amount: 50000 });
     expect(result.checkoutUrl).toBe("https://pay.example/checkout");
   });
 

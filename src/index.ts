@@ -30,12 +30,18 @@ export type {
   GatewayCheckoutResult,
   GatewayConfig,
   GatewayCreateCheckoutRequest,
+  GatewayCreateEwalletRequest,
   GatewayCreatePaymentRequest,
+  GatewayCreateQrisPaymentRequest,
+  GatewayCreateVirtualAccountRequest,
   GatewayDynamicOptions,
+  GatewayEwalletPaymentResult,
   GatewayPaymentResult,
   GatewayProvider,
   GatewayProviderCapabilities,
+  GatewayQrisPaymentResult,
   GatewayStatusResult,
+  GatewayVirtualAccountPaymentResult,
   GatewayWebhookResult,
 } from "./gateway/types";
 
