@@ -1,8 +1,8 @@
-# QRIS Dynamic Notes
+# Catatan QRIS Dinamis
 
-[English](./en/qris-dynamic.md) | Indonesian
+[English](./en/qris-dynamic.md) | Bahasa Indonesia
 
-## TLV structure
+## Struktur TLV
 
 Payload QRIS menggunakan format **Tag-Length-Value**.
 
@@ -48,16 +48,16 @@ Ketika user memindai QRIS:
 
 `qris-saurus` tidak menggantikan gateway pembayaran. Library ini membantu memastikan payload QRIS yang dibentuk atau dimodifikasi tetap konsisten dan valid.
 
-## Static vs dynamic
+## Statis vs dinamis
 
-### Static QRIS
+### QRIS statis
 
 Biasanya:
 - point of initiation method = `11`
 - reusable
 - belum mengikat nominal transaksi tertentu
 
-### Dynamic QRIS
+### QRIS dinamis
 
 Biasanya:
 - point of initiation method = `12`
@@ -77,7 +77,7 @@ Transformasi `staticToDynamic()` melakukan langkah berikut:
 6. isi tag `62` jika `merchantRef` atau `terminalLabel` diberikan
 7. tulis ulang payload dan hitung ulang CRC di tag `63`
 
-## Kapan local transform cukup?
+## Kapan transformasi lokal cukup?
 
 Local transform cocok bila:
 - merchant sudah punya QRIS payload statis
@@ -91,7 +91,7 @@ Gateway API lebih cocok bila:
 - butuh expiry time, callback, payment status, atau reconciliation dari gateway
 - butuh jaminan bahwa QR tersebut memang terikat ke transaksi pada sistem gateway
 
-## Scope library ini
+## Cakupan library ini
 
 `qris-saurus` mencakup dua pendekatan:
 
@@ -105,5 +105,6 @@ Gateway API lebih cocok bila:
 - Midtrans: `midtransAdapter.createDynamicQr()` + `checkPaymentStatus()`
 - Xendit: `xenditAdapter.createDynamicQr()` + `checkPaymentStatus()`
 - Duitku: `duitkuAdapter.createDynamicQr()` + `checkPaymentStatus()`
+- DOKU: `dokuAdapter.createDynamicQr()` + `checkPaymentStatus()`
 
 Lihat [docs/sdk/gateway.md](./sdk/gateway.md) untuk panduan lengkap kapan memakai local transform vs gateway API.

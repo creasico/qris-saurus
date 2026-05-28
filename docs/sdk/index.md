@@ -1,6 +1,6 @@
 # qris-saurus SDK
 
-[English](../en/sdk/index.md) | Indonesian
+[English](../en/sdk/index.md) | Bahasa Indonesia
 
 Bun/TypeScript library untuk mengubah QRIS statis menjadi dinamis — dengan dukungan deteksi provider, validasi CRC, dan rendering QR image.
 
@@ -10,10 +10,10 @@ Bun/TypeScript library untuk mengubah QRIS statis menjadi dinamis — dengan duk
   - [Daftar isi](#daftar-isi)
   - [Apa ini?](#apa-ini)
   - [Instalasi](#instalasi)
-  - [Quick start](#quick-start)
+  - [Mulai cepat](#mulai-cepat)
   - [Dua pendekatan](#dua-pendekatan)
-    - [A — Local transform (default, tersedia sekarang)](#a--local-transform-default-tersedia-sekarang)
-    - [B — Gateway API (tersedia untuk Midtrans, Xendit, Duitku)](#b--gateway-api-tersedia-untuk-midtrans-xendit-duitku)
+    - [A — Transformasi lokal (default)](#a--transformasi-lokal-default)
+    - [B — Gateway API (Midtrans, Xendit, Duitku, DOKU)](#b--gateway-api-midtrans-xendit-duitku-doku)
   - [Provider yang didukung](#provider-yang-didukung)
   - [Struktur folder](#struktur-folder)
   - [Dokumentasi lanjutan](#dokumentasi-lanjutan)
@@ -28,7 +28,7 @@ Bun/TypeScript library untuk mengubah QRIS statis menjadi dinamis — dengan duk
 - memvalidasi apakah payload sudah benar (CRC, tag wajib, currency)
 - mendeteksi provider dari merchant account identifier
 - mengubah QRIS statis menjadi dinamis secara lokal (tanpa API gateway)
-- membuat QRIS dinamis via gateway API (Midtrans, Xendit, Duitku)
+- membuat QRIS dinamis via gateway API (Midtrans, Xendit, Duitku, DOKU)
 - mengecek status pembayaran apakah sudah lunas
 - merender payload QRIS menjadi QR image PNG atau data URL
 
@@ -66,7 +66,7 @@ Atau via `package.json`:
 
 ---
 
-## Quick start
+## Mulai cepat
 
 ```ts
 import {
@@ -115,7 +115,7 @@ await renderQrToFile(dynamic.qrisString, "./qris-output.png");
 
 `qris-saurus` mendukung dua cara membuat QRIS dinamis:
 
-### A — Local transform (default, tersedia sekarang)
+### A — Transformasi lokal (default)
 
 Transformasi dilakukan sepenuhnya di sisi library, tanpa koneksi ke server manapun:
 
@@ -134,7 +134,7 @@ Cocok untuk:
 - kebutuhan inject nominal untuk POS, invoice, atau checkout internal
 - sistem offline atau edge deployment
 
-### B — Gateway API (tersedia untuk Midtrans, Xendit, Duitku)
+### B — Gateway API (Midtrans, Xendit, Duitku, DOKU)
 
 Meminta QR baru langsung ke gateway:
 
@@ -159,14 +159,15 @@ Lihat [docs/sdk/gateway.md](./gateway.md) untuk panduan lengkap penggunaan adapt
 
 ## Provider yang didukung
 
-| Provider  | Deteksi | Local transform | API adapter      |
-| --------- | ------- | --------------- | ---------------- |
-| ShopeePay | ✅       | ✅               | —                |
-| GoPay     | ✅       | ✅               | — (via Midtrans) |
-| Midtrans  | ✅       | ✅               | ✅                |
-| Xendit    | ✅       | ✅               | ✅                |
-| Duitku    | ✅       | ✅               | ✅                |
-| Generic   | —       | ✅               | —                |
+| Provider  | Deteksi | Transformasi lokal | API adapter      |
+| --------- | ------- | ------------------ | ---------------- |
+| ShopeePay | ✅       | ✅                  | —                |
+| GoPay     | ✅       | ✅                  | — (via Midtrans) |
+| Midtrans  | ✅       | ✅                  | ✅                |
+| Xendit    | ✅       | ✅                  | ✅                |
+| Duitku    | ✅       | ✅                  | ✅                |
+| DOKU      | —       | —                  | ✅                |
+| Generic   | —       | ✅                  | —                |
 
 Provider dideteksi dari subtag `00` pada merchant account information (tag `26`–`51`). Jika provider tidak dikenali, library tetap melakukan local transform sebagai `"generic"`.
 
@@ -195,10 +196,11 @@ qris-saurus/
 │   │   ├── xendit.ts
 │   │   ├── duitku.ts
 │   │   └── adapters/
-│   │       ├── types.ts          ← MidtransConfig, XenditConfig, DuitkuConfig
+│   │       ├── types.ts          ← MidtransConfig, XenditConfig, DuitkuConfig, DokuConfig
 │   │       ├── midtrans.ts       ← MidtransAdapter + midtransAdapter
 │   │       ├── xendit.ts         ← XenditAdapter + xenditAdapter
-│   │       └── duitku.ts         ← DuitkuAdapter + duitkuAdapter
+│   │       ├── duitku.ts         ← DuitkuAdapter + duitkuAdapter
+│   │       └── doku.ts           ← DokuAdapter + dokuAdapter
 │   ├── transform/
 │   │   ├── static-to-dynamic.ts  ← transformasi utama
 │   │   └── normalizer.ts
@@ -230,7 +232,7 @@ qris-saurus/
 | ---------------------------------------- | ------------------------------------------------------------------- |
 | [api.md](./api.md)                       | Referensi lengkap semua fungsi dan tipe yang diekspor               |
 | [workflow.md](./workflow.md)             | Panduan alur end-to-end untuk berbagai use case                     |
-| [gateway.md](./gateway.md)               | Penggunaan adapter Midtrans, Xendit, Duitku + cek status pembayaran |
+| [gateway.md](./gateway.md)               | Penggunaan adapter Midtrans, Xendit, Duitku, DOKU + cek status pembayaran |
 | [../architecture.md](../architecture.md) | Desain internal library (core engine + provider layer)              |
 | [../qris-dynamic.md](../qris-dynamic.md) | Teknis QRIS dinamis dan TLV tag yang terlibat                       |
 | [../providers.md](../providers.md)       | Catatan khusus per provider                                         |

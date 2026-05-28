@@ -1,6 +1,6 @@
-# API Reference
+# Referensi API
 
-[English](../en/sdk/api.md) | Indonesian
+[English](../en/sdk/api.md) | Bahasa Indonesia
 
 Semua export berasal dari entry point utama:
 

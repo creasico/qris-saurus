@@ -1,6 +1,6 @@
-# CLI Usage
+# Penggunaan CLI
 
-[English](./en/cli.md) | Indonesian
+[English](./en/cli.md) | Bahasa Indonesia
 
 `qris-saurus` menyediakan CLI sederhana untuk inspeksi dan transformasi payload QRIS.
 
@@ -12,7 +12,7 @@ bun run build
 
 Setelah build, file CLI ada di `dist/cli.js`.
 
-## Input modes
+## Mode input
 
 CLI menerima payload QRIS dari tiga sumber:
 
@@ -22,9 +22,9 @@ CLI menerima payload QRIS dari tiga sumber:
 
 Prioritasnya adalah argumen langsung, lalu file, lalu stdin.
 
-## Commands
+## Perintah
 
-### Validate
+### Validasi
 
 ```bash
 bun run dist/cli.js validate "<QRIS_PAYLOAD>"
@@ -59,7 +59,7 @@ cat ./payload.txt | bun run dist/cli.js parse
 
 Output berupa struktur TLV hasil parsing.
 
-### Detect provider
+### Deteksi provider
 
 ```bash
 bun run dist/cli.js detect "<QRIS_PAYLOAD>"
@@ -71,7 +71,7 @@ bun run dist/cli.js detect --input-file ./payload.txt
 
 Jika provider dikenali, output berisi metadata provider.
 
-### Convert to dynamic
+### Konversi ke dinamis
 
 ```bash
 bun run dist/cli.js dynamic "<QRIS_PAYLOAD>" --amount 12500 --merchant-ref INV-001 --terminal-label POS-A
@@ -99,7 +99,7 @@ cat ./payload.txt | bun run dist/cli.js render --output ./qris.png
 
 Output command ini adalah path file PNG yang berhasil dibuat.
 
-## Example workflow
+## Contoh alur
 
 1. ambil payload QRIS statis
 2. jalankan `validate`

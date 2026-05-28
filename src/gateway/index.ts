@@ -1,4 +1,5 @@
 import type { PaymentStatusResult } from "../core/types";
+import { DokuAdapter } from "../providers/adapters/doku";
 import { DuitkuAdapter } from "../providers/adapters/duitku";
 import { MidtransAdapter } from "../providers/adapters/midtrans";
 import type { PollOptions } from "../providers/adapters/poller";
@@ -7,6 +8,7 @@ import type {
   MidtransConfig,
   MidtransNotificationOptions,
   RefundOptions,
+  WebhookParseOptions,
   WebhookResult,
 } from "../providers/adapters/types";
 import { XenditAdapter } from "../providers/adapters/xendit";
@@ -26,6 +28,7 @@ const BUILTIN_ADAPTERS: Record<string, () => GatewayAdapter> = {
   midtrans: () => new MidtransAdapter(),
   xendit: () => new XenditAdapter(),
   duitku: () => new DuitkuAdapter(),
+  doku: () => new DokuAdapter(),
 };
 
 function createAdapter(provider: string, customAdapters: Map<string, () => GatewayAdapter>): GatewayAdapter {
@@ -77,6 +80,21 @@ function resolveConfig(config: GatewayConfig, customAdapters: Map<string, () => 
     }
     const sandbox = config.sandbox ?? env.DUITKU_SANDBOX === "true";
     return { ...config, merchantCode: code, merchantKey: key, sandbox };
+  }
+
+  if (config.provider === "doku") {
+    const clientId = config.clientId || env.DOKU_CLIENT_ID;
+    const clientSecret = config.clientSecret || env.DOKU_CLIENT_SECRET;
+    const privateKey = config.privateKey || env.DOKU_PRIVATE_KEY;
+    const merchantId = config.merchantId || env.DOKU_MERCHANT_ID;
+    const terminalId = config.terminalId || env.DOKU_TERMINAL_ID;
+    if (!clientId || !clientSecret || !privateKey || !merchantId || !terminalId) {
+      throw new ConfigurationError(
+        "DOKU clientId, clientSecret, privateKey, merchantId, and terminalId are required. Pass them in config or set DOKU_CLIENT_ID, DOKU_CLIENT_SECRET, DOKU_PRIVATE_KEY, DOKU_MERCHANT_ID, and DOKU_TERMINAL_ID env vars.",
+      );
+    }
+    const sandbox = config.sandbox ?? env.DOKU_SANDBOX === "true";
+    return { ...config, clientId, clientSecret, privateKey, merchantId, terminalId, sandbox };
   }
 
   if (customAdapters.has((config as any).provider)) {
@@ -230,9 +248,10 @@ class Gateway {
   verify(
     payload: unknown,
     headers?: Record<string, string | string[] | undefined>,
+    options?: WebhookParseOptions,
   ): WebhookResult {
     const { config, adapter } = this.assertConfigured();
-    return adapter.parseWebhook(payload, config, headers);
+    return adapter.parseWebhook(payload, config, headers, options);
   }
 
   toDynamic(

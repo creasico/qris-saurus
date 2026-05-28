@@ -13,29 +13,29 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 
 </div>
 
-[English](./README.en.md) | Indonesian
+[English](./README.en.md) | Bahasa Indonesia
 
-## Table of Contents
+## Daftar isi
 
 - [Apa itu QRIS?](#apa-itu-qris)
 - [Bagaimana QRIS bekerja?](#bagaimana-qris-bekerja)
-- [Static vs dynamic QRIS](#static-vs-dynamic-qris)
+- [QRIS statis vs dinamis](#qris-statis-vs-dinamis)
 - [Bagaimana qris-saurus bekerja?](#bagaimana-qris-saurus-bekerja)
-- [Goals](#goals)
-- [How It Works](#how-it-works)
-- [Install](#install)
-- [Configure Environment](#configure-environment)
-- [Quick start](#quick-start)
-- [Implementasi Sederhana](#implementasi-sederhana)
-- [Contoh Lengkap](#contoh-lengkap)
-- [Error Handling](#error-handling)
-- [Gateway & Custom Providers](#gateway--custom-providers)
+- [Tujuan](#tujuan)
+- [Cara kerja](#cara-kerja)
+- [Instalasi](#instalasi)
+- [Konfigurasi environment](#konfigurasi-environment)
+- [Mulai cepat](#mulai-cepat)
+- [Implementasi sederhana](#implementasi-sederhana)
+- [Contoh lengkap](#contoh-lengkap)
+- [Penanganan error](#penanganan-error)
+- [Gateway & custom provider](#gateway--custom-provider)
 - [CLI](#cli)
 - [Rendering dari library](#rendering-dari-library)
-- [Available API](#available-api)
-- [CLI input priority](#cli-input-priority)
-- [Development](#development)
-- [Documentation](#documentation)
+- [API tersedia](#api-tersedia)
+- [Prioritas input CLI](#prioritas-input-cli)
+- [Pengembangan](#pengembangan)
+- [Dokumentasi](#dokumentasi)
 
 ## Apa itu QRIS?
 
@@ -89,7 +89,7 @@ sequenceDiagram
     A-->>M: 8. Notifikasi
 ```
 
-## Static vs dynamic QRIS
+## QRIS statis vs dinamis
 
 ### QRIS statis
 Biasanya dipakai untuk merchant display tetap. Nominal tidak tertanam di payload, sehingga customer mengisi nominal sendiri atau nominal ditentukan dari flow di sisi aplikasi pembayaran.
@@ -130,16 +130,16 @@ flowchart TD
     G --> H["serialize()\n→ String QRIS Dinamis"]
 ```
 
-Untuk fase sekarang, fokus utama library ini adalah **transformasi lokal** dari QRIS statis menjadi QRIS dinamis yang valid. Integrasi API gateway seperti Midtrans/Xendit/Duitku bisa ditambahkan kemudian sebagai layer terpisah.
+Library ini mendukung dua mode: **transformasi lokal** dari QRIS statis menjadi QRIS dinamis, dan **pembayaran gateway** untuk membuat QRIS dinamis langsung lewat API provider seperti Midtrans, Xendit, Duitku, dan DOKU.
 
-## Goals
+## Tujuan
 
 - Mengubah QRIS statis menjadi QRIS dinamis secara lokal
 - Memastikan payload tetap valid dengan CRC yang benar
-- Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, dan Duitku
+- Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, Duitku, dan DOKU
 - Mudah di-import dari project Bun/TypeScript lain
 
-## How It Works
+## Cara kerja
 
 QRIS mengikuti **EMVCo QR Code Specification** menggunakan encoding **TLV (Tag-Length-Value)**:
 
@@ -164,7 +164,7 @@ Contoh annotasi payload nyata:
 └──────────────────────────────────────── 58: country code (length 2)
 ```
 
-### Proses konversi static → dynamic
+### Proses konversi statis → dinamis
 
 Saat `staticToDynamic()` dipanggil, library melakukan:
 
@@ -182,7 +182,7 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 7. **Hitung ulang CRC** — CRC16/CCITT atas seluruh payload kecuali 4 char terakhir
 8. **Serialize** — nodes dikembalikan ke string payload
 
-### Key QRIS Tags
+### Tag penting QRIS
 
 | Tag       | Nama                         | Contoh nilai              |
 | --------- | ---------------------------- | ------------------------- |
@@ -201,9 +201,9 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 | `62`      | Additional data field        | sub-tag `05`, `07`, `08`  |
 | `63`      | CRC                          | 4 char hex                |
 
-## Install
+## Instalasi
 
-Install from your preferred package manager:
+Instal dari package manager yang kamu pakai:
 
 ```bash
 npm install qris-saurus
@@ -217,13 +217,13 @@ pnpm add qris-saurus
 bun add qris-saurus
 ```
 
-If you are working on this repository locally:
+Kalau kamu bekerja langsung di repository ini:
 
 ```bash
 bun install
 ```
 
-## Configure Environment
+## Konfigurasi environment
 
 Buat file `.env` dari template:
 
@@ -245,12 +245,20 @@ XENDIT_SECRET_KEY=xnd_development_xxxxxxxxxxxxxxxxxxxxxxxx
 DUITKU_MERCHANT_CODE=Dxxxxx
 DUITKU_MERCHANT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DUITKU_SANDBOX=true
+
+# DOKU SNAP QRIS
+DOKU_CLIENT_ID=BRN-xxxxxxxx
+DOKU_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DOKU_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
+DOKU_MERCHANT_ID=xxxxxxxx
+DOKU_TERMINAL_ID=A01
+DOKU_SANDBOX=true
 ```
 
 Gunakan dalam kode:
 
 ```ts
-import { midtransAdapter, xenditAdapter, duitkuAdapter } from "qris-saurus";
+import { dokuAdapter, duitkuAdapter, midtransAdapter, xenditAdapter } from "qris-saurus";
 
 const midtransConfig = {
   serverKey: process.env.MIDTRANS_SERVER_KEY!,
@@ -265,10 +273,22 @@ const duitkuConfig = {
   merchantCode: process.env.DUITKU_MERCHANT_CODE!,
   merchantKey: process.env.DUITKU_MERCHANT_KEY!,
   sandbox: process.env.DUITKU_SANDBOX === "true",
+  returnUrl: "https://merchant.example/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+};
+
+const dokuConfig = {
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: process.env.DOKU_SANDBOX === "true",
+  webhookPath: "/webhooks/doku",
 };
 ```
 
-## Quick start
+## Mulai cepat
 
 ```ts
 import { makeDynamic, staticToDynamic, validate } from "qris-saurus";
@@ -288,7 +308,7 @@ console.log(result.provider);
 console.log(validate(dynamicQris));
 ```
 
-## Implementasi Sederhana
+## Implementasi sederhana
 
 Ada dua cara menggunakan qris-saurus: sebagai **package** (SDK) di project TypeScript/Bun kamu, atau langsung via **CLI** di terminal.
 
@@ -347,14 +367,14 @@ bun run dist/cli.js dynamic "000201010211..." --amount 25000 --merchant-ref INV-
 bun run dist/cli.js render "000201010211..." --output ./qris.png
 ```
 
-## Contoh Lengkap
+## Contoh lengkap
 
 Contoh standalone tersedia di folder [`examples`](./examples):
 
 ```bash
 bun run examples/basic.ts    # Core API: parse, validate, detect, transform
 bun run examples/render.ts   # Render QR ke file dan data URL
-bun run examples/gateway.ts  # Integrasi gateway (Midtrans, Xendit, Duitku)
+bun run examples/gateway.ts  # Integrasi gateway (Midtrans, Xendit, Duitku, DOKU)
 ```
 
 ### Parse payload QRIS
@@ -485,7 +505,7 @@ const dataUrl = await renderQrToDataUrl(qrisString, { width: 320 });
 await renderQrToFile(qrisString, "./qris.png", { width: 400, margin: 3 });
 ```
 
-### Error handling
+### Contoh penanganan error
 
 ```ts
 import { validate, parse, makeDynamic, staticToDynamic } from "qris-saurus";
@@ -517,7 +537,7 @@ try {
 }
 ```
 
-## Error Handling
+## Penanganan error
 
 `validate()` bersifat sinkron dan tidak pernah throw — hasil dikembalikan via `ValidationResult`. Namun `parse()`, `staticToDynamic()`, dan `makeDynamic()` dapat throw bila input tidak valid (CRC hilang/salah, amount tidak valid, dsb). Gateway adapters menggunakan `async/await` dan dapat throw bila request gagal.
 
@@ -566,27 +586,97 @@ try {
 }
 ```
 
-## Gateway & Custom Providers
+## Gateway & custom provider
 
-SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu:
+SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku, DOKU) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu.
+
+### Pembayaran gateway
+
+| Provider | `provider` | Dynamic QRIS | Status polling | Webhook verify | Config wajib | Catatan |
+| -------- | ---------- | ------------ | -------------- | -------------- | ------------ | ------- |
+| Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
+| Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
+| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
+| DOKU | `doku` | Ya, SNAP QRIS MPM Generate | Ya, SNAP QRIS MPM Query | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis. |
+
+Semua provider memakai method gateway yang sama:
 
 ```ts
 import { gateway } from "qris-saurus";
 
-// 1. Configure
-gateway.configure({ 
-  provider: "midtrans",
-  serverKey: "SB-Mid-server-xxx", // atau set environment variable MIDTRANS_SERVER_KEY
-  sandbox: true 
-}); 
+// 1. Configure provider aktif sekali saat boot aplikasi
+gateway.configure({
+  provider: "doku",
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: true,
+  webhookPath: "/webhooks/doku",
+});
 
-// 2. Gunakan method abstrak (charge, verify, status) tanpa peduli provider yang sedang aktif
-const chargeResult = await gateway.charge("INV-001", 50000);
-const statusResult = await gateway.status("INV-001");
-const verifyResult = gateway.verify(webhookPayload, headers); // verify bersifat sinkron
+// 2. Buat QRIS dinamis untuk satu order
+const chargeResult = await gateway.charge("INV-001", 50000, {
+  description: "Pembayaran INV-001",
+  customerEmail: "customer@example.com",
+});
+
+// 3. Cek status atau polling sampai terminal state
+const statusResult = await gateway.status(chargeResult.gatewayOrderId);
+const finalStatus = await gateway.pollPaymentStatus(chargeResult.gatewayOrderId, {
+  intervalMs: 2000,
+  timeoutMs: 60000,
+});
+
+// 4. Verify webhook/callback provider
+const verifyResult = gateway.verify(webhookPayload, headers); // sync
+// DOKU: pass rawBody when your framework exposes it.
+const dokuVerifyResult = gateway.verify(webhookPayload, headers, { rawBody });
 ```
 
-### Mendukung Custom Provider (Scaling)
+Status hasil normalisasi selalu memakai union berikut: `pending`, `paid`, `refunded`, `expired`, `failed`, atau `cancelled`. Simpan `gatewayOrderId` dari hasil `charge()` karena beberapa provider mengembalikan ID transaksi gateway yang berbeda dari order ID merchant. Adapter gateway hanya untuk server-side; jangan kirim secret/private key ke browser dan jangan log config, access token, atau raw error provider.
+
+#### Contoh konfigurasi Duitku
+
+```ts
+gateway.configure({
+  provider: "duitku",
+  merchantCode: process.env.DUITKU_MERCHANT_CODE!,
+  merchantKey: process.env.DUITKU_MERCHANT_KEY!, // API key Duitku
+  sandbox: true,
+  returnUrl: "https://merchant.example/payment/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+  paymentMethod: "SP", // default QRIS, bisa disesuaikan dengan channel Duitku yang aktif
+});
+```
+
+Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
+
+#### Contoh konfigurasi DOKU
+
+```ts
+gateway.configure({
+  provider: "doku",
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: true,
+  channelId: "H2H",
+  serviceCode: "47",
+  webhookPath: "/webhooks/doku",
+  additionalInfo: {
+    postalCode: "12190",
+    feeType: "1",
+  },
+});
+```
+
+DOKU adapter menjalankan flow SNAP: ambil access token B2B dengan RSA-SHA256, generate QRIS MPM dengan Bearer token, lalu query status dengan signature HMAC-SHA512. Untuk webhook DOKU, pastikan `webhookPath` sama persis dengan path endpoint publik yang menerima callback, karena path tersebut menjadi bagian dari string-to-sign. Verifikasi webhook menolak timestamp di luar 5 menit secara default (`webhookMaxTimestampSkewMs` atau option `maxTimestampSkewMs`) dan sebaiknya diberi `rawBody` supaya hash signature mengikuti body asli dari DOKU. Seperti Duitku, `parseWebhook()` melempar error bila signature/timestamp tidak valid; `{ throwOnInvalid: false }` mengembalikan hasil aman tanpa status/order palsu.
+
+### Mendukung custom provider (scaling)
 
 Arsitektur gateway sangat scalable. Kamu bisa dengan mudah membawa provider-mu sendiri (misal Biller lain atau gateway internal) tanpa perlu memodifikasi core library. Cukup implementasikan _interface_ `GatewayAdapter` yang wajib menyertakan 4 operasi inti: `createDynamicQr`, `checkPaymentStatus`, `parseWebhook`, dan `pollPaymentStatus`.
 
@@ -832,19 +922,19 @@ Helper ini berguna kalau kamu ingin:
 - menyimpan QR image ke file
 - mengirim hasil render ke pipeline lain setelah payload selesai dibentuk
 
-## Available API
+## API tersedia
 
-**Core:**
+**Inti:**
 - `parse(qrisString)` — string → TLV nodes
 - `serialize(qrisData)` — TLV nodes → string
 - `validate(qrisString)` — cek CRC + tag wajib
 - `computeCrc(input)` / `verifyCrc(qrisString)`
 
-**Transform:**
+**Transformasi:**
 - `staticToDynamic(qrisString, options)` — local transform, return string
 - `makeDynamic(qrisString, options)` — local transform + provider detection, return `DynamicResult`
 
-**Providers:**
+**Provider:**
 - `detectProvider(qrisString)` — return `ProviderAdapter | null`
 - `listProviders()` — return semua provider terdaftar
 
@@ -854,14 +944,19 @@ Helper ini berguna kalau kamu ingin:
 - `midtransAdapter.verifyWebhook(payload, config)` / `parseWebhook(payload, config)` / `getWebhookStatus(payload)` — validasi dan normalisasi webhook Midtrans
 - `xenditAdapter.createDynamicQr(options, config)` — buat QR via Xendit API
 - `xenditAdapter.checkPaymentStatus(gatewayOrderId, config)` — cek status pembayaran
-- `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku API
-- `duitkuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran
+- `xenditAdapter.parseWebhook(payload, config, headers)` — validasi callback token dan normalisasi webhook Xendit
+- `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku Direct API
+- `duitkuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran Duitku
+- `duitkuAdapter.parseWebhook(payload, config)` — validasi HMAC-SHA256 dan normalisasi callback Duitku
+- `dokuAdapter.createDynamicQr(options, config)` — buat QR via DOKU SNAP QRIS MPM Generate
+- `dokuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran DOKU SNAP QRIS MPM Query
+- `dokuAdapter.parseWebhook(payload, config, headers)` — validasi HMAC-SHA512 SNAP dan normalisasi webhook DOKU
 
 **Render:**
 - `renderQrToDataUrl(qrisString, options?)` — return Base64 PNG data URL
 - `renderQrToFile(qrisString, outputPath, options?)` — simpan ke file PNG
 
-## CLI input priority
+## Prioritas input CLI
 
 CLI menerima input dengan urutan prioritas:
 1. argumen langsung
@@ -879,7 +974,7 @@ bun run dist/cli.js dynamic --input-file payload.txt --amount 25000
 cat payload.txt | bun run dist/cli.js render --output qris.png
 ```
 
-## Development
+## Pengembangan
 
 ```bash
 bun install
@@ -888,7 +983,7 @@ bun run typecheck
 bun run build
 ```
 
-## Documentation
+## Dokumentasi
 
 Lihat folder [`docs`](./docs):
 

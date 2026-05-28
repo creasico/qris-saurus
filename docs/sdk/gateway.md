@@ -1,6 +1,6 @@
-# Gateway Integration
+# Integrasi Gateway
 
-[English](../en/sdk/gateway.md) | Indonesian
+[English](../en/sdk/gateway.md) | Bahasa Indonesia
 
 Dokumen ini menjelaskan perbedaan antara **local transform** dan **gateway API**, kapan memakai masing-masing, dan cara menggunakan adapter gateway yang sudah tersedia.
 
@@ -20,7 +20,7 @@ Dokumen ini menjelaskan perbedaan antara **local transform** dan **gateway API**
 
 ---
 
-## Local transform — cara kerja
+## Transformasi lokal — cara kerja
 
 Library membaca QRIS statis yang sudah ada, memodifikasi payload-nya secara lokal, dan menghasilkan string baru yang valid. Semua terjadi di memory, tanpa I/O ke server.
 
@@ -40,17 +40,18 @@ Semua provider saat ini menggunakan mode ini.
 
 ## Gateway API — cara kerja
 
-Gateway seperti Midtrans, Xendit, dan Duitku menyediakan endpoint untuk membuat QR baru dari sisi server mereka. QR yang dihasilkan sudah punya expiry, terikat ke order ID gateway, dan bisa dipantau statusnya.
+Gateway seperti Midtrans, Xendit, Duitku, dan DOKU menyediakan endpoint untuk membuat QR baru dari sisi server mereka. QR yang dihasilkan sudah punya expiry, terikat ke order ID gateway, dan bisa dipantau statusnya.
 
-`qris-saurus` sudah menyediakan adapter siap pakai untuk ketiga gateway ini.
+`qris-saurus` sudah menyediakan adapter siap pakai untuk gateway tersebut.
 
 ```
 Request { amount, orderId, ... }
           │
           ▼
-   POST /v2/charge  (Midtrans)
-   POST /qr_codes   (Xendit)
-   POST /...        (Duitku)
+   POST /v2/charge          (Midtrans)
+   POST /qr_codes           (Xendit)
+   POST /v2/inquiry         (Duitku)
+   POST /snap/v1.0/qr/qr-mpm-generate (DOKU)
           │
           ▼
 Response { qr_string, expiry_time, ... }
@@ -61,7 +62,7 @@ Response { qr_string, expiry_time, ... }
 
 ---
 
-## Provider API overview
+## Ringkasan API provider
 
 ### Midtrans
 
@@ -113,35 +114,55 @@ Response berisi `qr_string` yang langsung bisa dirender, ditambah `expires_at` d
 
 ### Duitku
 
-Duitku menggunakan sistem transaksi umum yang menghasilkan payment URL atau QR untuk berbagai metode pembayaran termasuk QRIS.
+Duitku Direct API menghasilkan QRIS lewat endpoint inquiry dengan signature HMAC-SHA256.
 
 ```
-POST https://api-prod.duitku.com/api/merchant/createInvoice
+POST https://passport.duitku.com/webapi/api/merchant/v2/inquiry
 Content-Type: application/json
 
 {
   "merchantCode": "...",
   "paymentAmount": 75000,
+  "paymentMethod": "SP",
   "merchantOrderId": "INV-2026-001",
   "productDetails": "Pembayaran Order",
   "email": "customer@example.com",
-  "paymentMethod": "QRIS",
-  "signature": "...",  // MD5(merchantCode + amount + orderId + merchantKey)
-  // ⚠️ SECURITY WARNING: MD5 is cryptographically broken and collision-prone.
-  // This requirement is a limitation of the Duitku API, not recommended practice.
-  // Always generate signatures server-side, protect merchantKey, and prefer
-  // HMAC-SHA256 or stronger algorithms for internal/future integrations.
-  "returnUrl": "https://...",
   "callbackUrl": "https://...",
-  "expiryPeriod": 1440  // menit
+  "returnUrl": "https://...",
+  "signature": "..." // HMAC-SHA256(merchantCode + merchantOrderId + paymentAmount, apiKey)
 }
 ```
 
-Response berisi `paymentUrl` dan `qrString` untuk metode QR.
+Response berisi `qrString`, `paymentUrl`, dan `reference` bila transaksi berhasil.
 
-- Membutuhkan: Merchant Code + Merchant Key (untuk signature)
-- Expiry: dikontrol via `expiryPeriod`
-- Callback: via `callbackUrl`
+- Membutuhkan: Merchant Code + API key sebagai `merchantKey`
+- Expiry: dikontrol via `expiryPeriod` jika dikirim
+- Callback: via `callbackUrl`, signature HMAC-SHA256
+
+### DOKU
+
+DOKU memakai SNAP QRIS MPM: ambil access token B2B dengan RSA-SHA256, lalu generate/query QRIS dengan Bearer token dan signature HMAC-SHA512.
+
+```
+POST https://api-sandbox.doku.com/snap/v1.0/qr/qr-mpm-generate
+Authorization: Bearer <access-token>
+X-TIMESTAMP: 2026-05-07T03:00:00.000Z
+X-SIGNATURE: HMAC-SHA512(...)
+X-PARTNER-ID: BRN-...
+X-EXTERNAL-ID: ...
+CHANNEL-ID: ...
+
+{
+  "partnerReferenceNo": "INV-2026-001",
+  "amount": { "value": "75000.00", "currency": "IDR" },
+  "merchantId": "...",
+  "terminalId": "A01"
+}
+```
+
+- Membutuhkan: Client ID, Client Secret, Private Key, Merchant ID, Terminal ID
+- Token: B2B access token dicache otomatis sampai mendekati kedaluwarsa
+- Webhook: signature SNAP HMAC-SHA512 memakai path callback dan raw body
 
 ### ShopeePay & GoPay
 
@@ -177,13 +198,14 @@ src/
         └── duitku.ts        ← DuitkuAdapter, duitkuAdapter
 ```
 
-### Types
+### Tipe
 
 ```ts
 // Config per gateway
 interface MidtransConfig { serverKey: string; sandbox?: boolean; }
 interface XenditConfig   { secretKey: string; }
-interface DuitkuConfig   { merchantCode: string; merchantKey: string; sandbox?: boolean; }
+interface DuitkuConfig   { merchantCode: string; merchantKey: string; returnUrl: string; callbackUrl: string; sandbox?: boolean; }
+interface DokuConfig     { clientId: string; clientSecret: string; privateKey: string; merchantId: string; terminalId: string; sandbox?: boolean; webhookPath?: string; }
 
 // Opsi saat buat QR
 interface ApiQrCreateOptions {
@@ -225,6 +247,7 @@ import {
   midtransAdapter,
   xenditAdapter,
   duitkuAdapter,
+  dokuAdapter,
   renderQrToDataUrl,
 } from "qris-saurus";
 
@@ -254,14 +277,33 @@ const xenditStatus = await xenditAdapter.checkPaymentStatus(
 );
 
 // --- Duitku ---
+const duitkuConfig = {
+  merchantCode: process.env.DUITKU_CODE!,
+  merchantKey: process.env.DUITKU_KEY!,
+  returnUrl: "https://merchant.example/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+};
 const duitkuQr = await duitkuAdapter.createDynamicQr(
   { orderId: "INV-2026-001", amount: 75_000, customerEmail: "u@example.com" },
-  { merchantCode: process.env.DUITKU_CODE!, merchantKey: process.env.DUITKU_KEY! },
+  duitkuConfig,
 );
-const duitkuStatus = await duitkuAdapter.checkPaymentStatus(
-  "INV-2026-001",
-  { merchantCode: process.env.DUITKU_CODE!, merchantKey: process.env.DUITKU_KEY! },
+const duitkuStatus = await duitkuAdapter.checkPaymentStatus("INV-2026-001", duitkuConfig);
+
+// --- DOKU ---
+const dokuConfig = {
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  webhookPath: "/webhooks/doku",
+  sandbox: true,
+};
+const dokuQr = await dokuAdapter.createDynamicQr(
+  { orderId: "INV-2026-001", amount: 75_000 },
+  dokuConfig,
 );
+const dokuStatus = await dokuAdapter.checkPaymentStatus("INV-2026-001", dokuConfig);
 
 // --- Render hasil ke image ---
 const image = await renderQrToDataUrl(midtransQr.qrisString);
@@ -278,12 +320,12 @@ Apakah kamu sudah punya QRIS statis dari acquirer/bank?
     │           │
     │           ├── Tidak → gunakan local transform (tersedia sekarang)
     │           │
-    │           └── Ya → gunakan gateway API adapter (Midtrans/Xendit/Duitku)
+    │           └── Ya → gunakan gateway API adapter (Midtrans/Xendit/Duitku/DOKU)
     │
     └── Tidak → gunakan gateway API untuk generate QR baru dari sistem gateway
 ```
 
-### Decision matrix
+### Matriks keputusan
 
 | Kebutuhan                                   | Rekomendasi                     |
 | ------------------------------------------- | ------------------------------- |
@@ -382,32 +424,50 @@ app.post("/webhook/xendit", async (req, res) => {
 
 ### Duitku
 
-Duitku menandatangani callback dengan `signature` yang dibentuk dari:
-
-```
-MD5(merchantCode + amount + merchantOrderId + merchantKey)
-```
+Duitku menandatangani callback dengan HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` memakai API key. `parseWebhook()` melempar error bila signature atau `merchantCode` tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false`.
 
 ```ts
 import { duitkuAdapter } from "qris-saurus";
 
 app.post("/webhook/duitku", async (req, res) => {
-  const payload = req.body as Record<string, unknown>;
+  try {
+    const parsed = duitkuAdapter.parseWebhook(req.body, {
+      merchantCode: process.env.DUITKU_CODE!,
+      merchantKey: process.env.DUITKU_KEY!,
+      returnUrl: "https://merchant.example/return",
+      callbackUrl: "https://merchant.example/webhooks/duitku",
+    });
 
-  const valid = duitkuAdapter.verifyWebhook(payload, {
-    merchantCode: process.env.DUITKU_CODE!,
-    merchantKey: process.env.DUITKU_KEY!,
-  });
-
-  if (!valid) {
+    if (parsed.status === "paid") {
+      // catat pembayaran berhasil
+    }
+    res.sendStatus(200);
+  } catch {
     res.status(400).send("Invalid signature");
-    return;
   }
+});
+```
 
-  if (payload.resultCode === "00") {
-    // catat pembayaran berhasil
+### DOKU
+
+DOKU SNAP webhook memakai HMAC-SHA512 atas method, path webhook, access token, hash body, dan timestamp. Pastikan `webhookPath` sama dengan path publik dan kirim `rawBody` bila framework menyediakannya.
+
+```ts
+import { dokuAdapter } from "qris-saurus";
+
+app.post("/webhook/doku", async (req, res) => {
+  try {
+    const parsed = dokuAdapter.parseWebhook(req.body, dokuConfig, req.headers, {
+      rawBody: req.rawBody,
+    });
+
+    if (parsed.status === "paid") {
+      // catat pembayaran berhasil
+    }
+    res.sendStatus(200);
+  } catch {
+    res.status(400).send("Invalid signature");
   }
-  res.sendStatus(200);
 });
 ```
 
@@ -434,7 +494,7 @@ const result = await midtransAdapter.pollPaymentStatus(
 console.log(result.status); // "paid" | "expired" | "failed" | "cancelled"
 ```
 
-Xendit dan Duitku memiliki method yang identik:
+Xendit, Duitku, dan DOKU memiliki method yang identik:
 
 ```ts
 const xenditResult = await xenditAdapter.pollPaymentStatus(
@@ -442,10 +502,8 @@ const xenditResult = await xenditAdapter.pollPaymentStatus(
   { secretKey: process.env.XENDIT_SECRET_KEY! },
 );
 
-const duitkuResult = await duitkuAdapter.pollPaymentStatus(
-  "INV-2026-001",
-  { merchantCode: process.env.DUITKU_CODE!, merchantKey: process.env.DUITKU_KEY! },
-);
+const duitkuResult = await duitkuAdapter.pollPaymentStatus("INV-2026-001", duitkuConfig);
+const dokuResult = await dokuAdapter.pollPaymentStatus("INV-2026-001", dokuConfig);
 ```
 
 Untuk kasus kustom (mis. provider sendiri), gunakan `pollUntilSettled` secara langsung:
@@ -461,7 +519,7 @@ const result = await pollUntilSettled(
 
 ---
 
-## B2B OAuth 2.0 token management
+## Manajemen token B2B OAuth 2.0
 
 Beberapa gateway menggunakan OAuth 2.0 client credentials flow dengan akses token yang expired secara berkala. `TokenManager` meng-cache token dan me-refresh-nya secara otomatis sebelum kedaluwarsa.
 
@@ -527,3 +585,4 @@ async function fetchWithRetry(url: string, init: RequestInit, tokenManager: Toke
 | Midtrans | https://docs.midtrans.com/reference/qris             |
 | Xendit   | https://developers.xendit.co/api-reference/#qr-codes |
 | Duitku   | https://docs.duitku.com                              |
+| DOKU     | https://developers.doku.com                          |

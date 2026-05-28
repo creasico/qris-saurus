@@ -1,10 +1,10 @@
-# Architecture
+# Arsitektur
 
-[English](./en/architecture.md) | Indonesian
+[English](./en/architecture.md) | Bahasa Indonesia
 
 `qris-saurus` dibagi menjadi dua lapisan utama.
 
-## 1. Core QRIS engine
+## 1. Mesin inti QRIS
 
 Lapisan ini provider-agnostic dan bertanggung jawab untuk:
 
@@ -26,7 +26,7 @@ Komponen utamanya:
 
 `src/render.ts` berada di atas payload layer. Ia tidak mengubah struktur QRIS, hanya mengubah string payload yang sudah valid menjadi representasi gambar QR.
 
-### Internal flow
+### Alur internal
 
 Alur internal yang dipakai library:
 
@@ -45,7 +45,7 @@ Alur internal yang dipakai library:
 
 Karena payload QRIS sensitif terhadap posisi, panjang field, dan CRC. Mengubah string secara manual rawan menghasilkan payload yang terlihat benar tapi gagal diproses scanner atau gateway.
 
-## 2. Provider layer
+## 2. Lapisan provider
 
 Lapisan ini bertanggung jawab untuk:
 
@@ -68,11 +68,11 @@ Komponen utamanya:
 Penting untuk dibedakan:
 
 - **local payload transformation**: bekerja pada string QRIS yang sudah ada, tanpa koneksi internet, sync — via `staticToDynamic()` / `makeDynamic()`
-- **gateway QR generation**: meminta QR baru langsung ke Midtrans/Xendit/Duitku, async — via `midtransAdapter`, `xenditAdapter`, `duitkuAdapter`
+- **gateway QR generation**: meminta QR baru langsung ke Midtrans/Xendit/Duitku/DOKU, async — via `midtransAdapter`, `xenditAdapter`, `duitkuAdapter`, `dokuAdapter`
 
 Kedua pendekatan ini tersedia dan bisa dipilih sesuai kebutuhan. Lihat [docs/sdk/gateway.md](./sdk/gateway.md) untuk panduan kapan memakai masing-masing.
 
-## Design principles
+## Prinsip desain
 
 - selalu gunakan alur parse → validate → transform → serialize
 - jangan manipulasi string payload secara manual

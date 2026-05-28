@@ -2,18 +2,20 @@ import type { DynamicOptions, PaymentStatusResult } from "../core/types";
 
 import type {
   ApiQrResult,
+  DokuConfig,
   DuitkuConfig,
   MidtransConfig,
   WebhookResult,
   XenditConfig,
 } from "../providers/adapters/types";
 
-export type GatewayProvider = "midtrans" | "xendit" | "duitku";
+export type GatewayProvider = "midtrans" | "xendit" | "duitku" | "doku";
 
 export type GatewayConfig =
   | ({ provider: "midtrans" } & MidtransConfig)
   | ({ provider: "xendit" } & XenditConfig)
   | ({ provider: "duitku" } & DuitkuConfig)
+  | ({ provider: "doku" } & DokuConfig)
   | ({ provider: string } & Record<string, any>);
 
 export interface ChargeOptions {

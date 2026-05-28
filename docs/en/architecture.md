@@ -1,6 +1,6 @@
 # Architecture
 
-English | [Indonesian](../architecture.md)
+English | [Bahasa Indonesia](../architecture.md)
 
 `qris-saurus` is divided into two main layers.
 
@@ -68,7 +68,7 @@ Main components:
 It is important to distinguish between:
 
 - **local payload transformation**: works on an existing QRIS string, requires no internet, synchronous — via `staticToDynamic()` / `makeDynamic()`
-- **gateway QR generation**: requests a new QR directly from Midtrans/Xendit/Duitku, asynchronous — via `midtransAdapter`, `xenditAdapter`, `duitkuAdapter`
+- **gateway QR generation**: requests a new QR directly from Midtrans/Xendit/Duitku/DOKU, asynchronous — via `midtransAdapter`, `xenditAdapter`, `duitkuAdapter`, `dokuAdapter`
 
 Both approaches are available and can be chosen based on your needs. See [docs/en/sdk/gateway.md](./sdk/gateway.md) for guidance on when to use each.
 

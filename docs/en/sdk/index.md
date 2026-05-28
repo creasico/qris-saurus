@@ -1,6 +1,6 @@
 # qris-saurus SDK
 
-English | [Indonesian](../../sdk/index.md)
+English | [Bahasa Indonesia](../../sdk/index.md)
 
 A Bun/TypeScript library for turning static QRIS into dynamic QRIS — with provider detection, CRC validation, and QR image rendering.
 
@@ -13,7 +13,7 @@ A Bun/TypeScript library for turning static QRIS into dynamic QRIS — with prov
   - [Quick start](#quick-start)
   - [Two approaches](#two-approaches)
     - [A — Local transform (default, available now)](#a--local-transform-default-available-now)
-    - [B — Gateway API (available for Midtrans, Xendit, Duitku)](#b--gateway-api-available-for-midtrans-xendit-duitku)
+    - [B — Gateway API (Midtrans, Xendit, Duitku, DOKU)](#b--gateway-api-midtrans-xendit-duitku-doku)
   - [Supported providers](#supported-providers)
   - [Folder structure](#folder-structure)
   - [Further documentation](#further-documentation)
@@ -28,7 +28,7 @@ A Bun/TypeScript library for turning static QRIS into dynamic QRIS — with prov
 - validate whether the payload is correct (CRC, required tags, currency)
 - detect providers from merchant account identifiers
 - transform static QRIS into dynamic QRIS locally (without a gateway API)
-- create dynamic QRIS through gateway APIs (Midtrans, Xendit, Duitku)
+- create dynamic QRIS through gateway APIs (Midtrans, Xendit, Duitku, DOKU)
 - check whether a payment has been completed
 - render QRIS payloads into PNG QR images or data URLs
 
@@ -128,7 +128,7 @@ Suitable for:
 - systems that only need to inject an amount for POS, invoices, or internal checkout
 - offline systems or edge deployments
 
-### B — Gateway API (available for Midtrans, Xendit, Duitku)
+### B — Gateway API (Midtrans, Xendit, Duitku, DOKU)
 
 Requests a new QR directly from the gateway:
 
@@ -160,6 +160,7 @@ See [docs/en/sdk/gateway.md](./gateway.md) for a complete guide to adapter usage
 | Midtrans  | ✅        | ✅              | ✅               |
 | Xendit    | ✅        | ✅              | ✅               |
 | Duitku    | ✅        | ✅              | ✅               |
+| DOKU      | —         | —               | ✅               |
 | Generic   | —         | ✅              | —                |
 
 Providers are detected from subtag `00` inside merchant account information (tags `26`–`51`). If no provider is recognized, the library still performs a local transform as `"generic"`.
@@ -209,7 +210,7 @@ qris-saurus/
 | -------------------------------------------- | ------------------------------------------------------------- |
 | [api.md](./api.md)                           | Full reference for all exported functions and types           |
 | [workflow.md](./workflow.md)                 | End-to-end workflow guide for different use cases             |
-| [gateway.md](./gateway.md)                   | Midtrans, Xendit, Duitku adapter usage + payment status checks |
+| [gateway.md](./gateway.md)                   | Midtrans, Xendit, Duitku, DOKU adapter usage + payment status checks |
 | [../architecture.md](../architecture.md)     | Internal library design (core engine + provider layer)        |
 | [../qris-dynamic.md](../qris-dynamic.md)     | Dynamic QRIS details and related TLV tags                     |
 | [../providers.md](../providers.md)           | Provider-specific notes                                       |
