@@ -3,11 +3,22 @@ import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
 import { tokenManager } from "./token-manager";
-import type { ApiQrCreateOptions, ApiQrResult, DokuConfig, WebhookParseOptions, WebhookRawBody, WebhookResult } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CreatePaymentRequest,
+  DokuConfig,
+  PaymentResult,
+  ProviderCapabilities,
+  WebhookParseOptions,
+  WebhookRawBody,
+  WebhookResult,
+} from "./types";
 
 const DEFAULT_CHANNEL_ID = "H2H";
 const DEFAULT_SERVICE_CODE = "47";
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+const DOKU_CAPABILITIES: ProviderCapabilities = { qris: true };
 const DEFAULT_WEBHOOK_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
@@ -134,6 +145,10 @@ function responseCodeOk(code: unknown): boolean {
 }
 
 export class DokuAdapter implements GatewayAdapter {
+  capabilities(): ProviderCapabilities {
+    return DOKU_CAPABILITIES;
+  }
+
   private baseUrl(sandbox = false): string {
     return sandbox ? "https://api-sandbox.doku.com" : "https://api.doku.com";
   }
@@ -278,6 +293,35 @@ export class DokuAdapter implements GatewayAdapter {
       gatewayOrderId: String(data.partnerReferenceNo ?? options.orderId),
       ...(typeof data.referenceNo === "string" ? { gatewayTransactionId: data.referenceNo } : {}),
       raw: data,
+    };
+  }
+
+  async createPayment(request: CreatePaymentRequest, config: DokuConfig): Promise<PaymentResult> {
+    if (request.method !== "qris") {
+      throw new Error(`DOKU ${request.method} direct payment is not supported by this adapter yet.`);
+    }
+
+    const qr = await this.createDynamicQr(
+      {
+        orderId: request.orderId,
+        amount: request.amount,
+        ...(request.description ? { description: request.description } : {}),
+        ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+      },
+      config,
+    );
+
+    return {
+      provider: "doku",
+      method: "qris",
+      orderId: request.orderId,
+      gatewayOrderId: qr.gatewayOrderId,
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      qrisString: qr.qrisString,
+      ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+      raw: qr.raw,
     };
   }
 

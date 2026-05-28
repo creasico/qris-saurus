@@ -2,7 +2,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig, WebhookParseOptions, WebhookResult } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CreatePaymentRequest,
+  DuitkuConfig,
+  PaymentResult,
+  ProviderCapabilities,
+  WebhookParseOptions,
+  WebhookResult,
+} from "./types";
 
 // transactionStatus: 00 success, 01 process/pending, 02 failed/expired.
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -18,6 +27,7 @@ const CALLBACK_STATUS_MAP: Record<string, PaymentStatusCode> = {
 };
 
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+const DUITKU_CAPABILITIES: ProviderCapabilities = { qris: true };
 const DEFAULT_QRIS_PAYMENT_METHOD = "SP";
 const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
@@ -58,6 +68,10 @@ function invalidWebhookResult(raw: unknown): WebhookResult {
 }
 
 export class DuitkuAdapter implements GatewayAdapter {
+  capabilities(): ProviderCapabilities {
+    return DUITKU_CAPABILITIES;
+  }
+
   private baseUrl(sandbox = false): string {
     return sandbox
       ? "https://sandbox.duitku.com/webapi/api/merchant"
@@ -157,6 +171,36 @@ export class DuitkuAdapter implements GatewayAdapter {
       ...(typeof data.reference === "string" ? { gatewayTransactionId: data.reference } : {}),
       ...(typeof data.paymentUrl === "string" ? { qrImageUrl: data.paymentUrl } : {}),
       raw: data,
+    };
+  }
+
+  async createPayment(request: CreatePaymentRequest, config: DuitkuConfig): Promise<PaymentResult> {
+    if (request.method !== "qris") {
+      throw new Error(`Duitku ${request.method} direct payment is not supported by this adapter yet.`);
+    }
+
+    const qr = await this.createDynamicQr(
+      {
+        orderId: request.orderId,
+        amount: request.amount,
+        ...(request.description ? { description: request.description } : {}),
+        ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+      },
+      config,
+    );
+
+    return {
+      provider: "duitku",
+      method: "qris",
+      orderId: request.orderId,
+      gatewayOrderId: qr.gatewayOrderId,
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      qrisString: qr.qrisString,
+      ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl, paymentUrl: qr.qrImageUrl } : {}),
+      ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+      raw: qr.raw,
     };
   }
 

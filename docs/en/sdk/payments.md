@@ -149,11 +149,11 @@ For providers that require the raw body, such as DOKU SNAP, pass the raw body th
 | Provider | Direct QRIS | Direct VA | Direct e-wallet | Hosted checkout | Webhook verification |
 | --- | --- | --- | --- | --- | --- |
 | Midtrans | Yes | BCA, BNI, BRI, Permata, CIMB | GoPay, ShopeePay | Snap redirect | SHA512 notification signature |
-| Xendit | Yes | Not yet in this adapter | Not yet in this adapter | Not yet in this adapter | Callback token |
+| Xendit | Yes | Via hosted invoice | Via hosted invoice | Invoice checkout | Callback token |
 | Duitku | Yes | Not yet in this adapter | Not yet in this adapter | Not yet in this adapter | HMAC-SHA256 callback signature |
 | DOKU | Yes | Not yet in this adapter | Not yet in this adapter | Not yet in this adapter | SNAP signature + timestamp window |
 
-Note: Xendit, Duitku, and DOKU expose VA/e-wallet/hosted UI products in their official docs, but `qris-saurus` only enables direct QRIS for those providers until each method-specific request/response and webhook flow is implemented with dedicated tests.
+Note: Xendit VA/e-wallet support is intentionally exposed through hosted invoices (`createCheckout()`), not direct `createPayment()`, because direct channel responses and webhooks differ per method. Duitku and DOKU still expose direct QRIS only until each non-QRIS request/response and webhook flow is implemented with dedicated tests.
 
 ## Provider Documentation References
 

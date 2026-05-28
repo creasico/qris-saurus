@@ -1,13 +1,60 @@
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, WebhookResult, XenditConfig } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreatePaymentRequest,
+  PaymentResult,
+  ProviderCapabilities,
+  WebhookResult,
+  XenditConfig,
+} from "./types";
 
 const BASE_URL = "https://api.xendit.co";
+
+const XENDIT_CAPABILITIES: ProviderCapabilities = {
+  qris: true,
+  hostedCheckout: true,
+};
+
+function mapXenditInvoiceMethods(methods: CreateCheckoutRequest["enabledMethods"]): string[] | undefined {
+  if (!methods?.length) return undefined;
+  const mapped = new Set<string>();
+  for (const method of methods) {
+    if (method === "qris") mapped.add("QRIS");
+    if (method === "virtual_account") {
+      for (const bank of ["BCA", "BNI", "BRI", "MANDIRI", "PERMATA"]) mapped.add(bank);
+    }
+    if (method === "ewallet") {
+      for (const channel of ["OVO", "DANA", "LINKAJA", "SHOPEEPAY"]) mapped.add(channel);
+    }
+  }
+  return mapped.size > 0 ? Array.from(mapped) : undefined;
+}
+
+function invoiceDurationSeconds(expiresAt: Date | undefined): number | undefined {
+  if (!expiresAt) return undefined;
+  return Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+}
 
 export class XenditAdapter implements GatewayAdapter {
   private authHeader(secretKey: string): string {
     return "Basic " + btoa(secretKey + ":");
+  }
+
+  private jsonHeaders(config: XenditConfig): Record<string, string> {
+    return {
+      Authorization: this.authHeader(config.secretKey),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+  }
+
+  capabilities(): ProviderCapabilities {
+    return XENDIT_CAPABILITIES;
   }
 
   private async request<T>(
@@ -46,11 +93,7 @@ export class XenditAdapter implements GatewayAdapter {
       `${BASE_URL}/qr_codes`,
       {
         method: "POST",
-        headers: {
-          Authorization: this.authHeader(config.secretKey),
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: this.jsonHeaders(config),
         body: JSON.stringify({
           reference_id: options.orderId,
           type: "DYNAMIC",
@@ -73,6 +116,71 @@ export class XenditAdapter implements GatewayAdapter {
       qrisString,
       gatewayOrderId: String(data.id ?? options.orderId),
       ...(expiresAt !== undefined && { expiresAt }),
+      raw: data,
+    };
+  }
+
+  async createPayment(request: CreatePaymentRequest, config: XenditConfig): Promise<PaymentResult> {
+    if (request.method !== "qris") {
+      throw new Error(`Xendit ${request.method} direct payment is not supported by this adapter yet.`);
+    }
+
+    const qr = await this.createDynamicQr(
+      {
+        orderId: request.orderId,
+        amount: request.amount,
+        ...(request.description ? { description: request.description } : {}),
+        ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+      },
+      config,
+    );
+
+    return {
+      provider: "xendit",
+      method: "qris",
+      orderId: request.orderId,
+      gatewayOrderId: qr.gatewayOrderId,
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      ...(qr.expiresAt ? { expiresAt: qr.expiresAt } : {}),
+      qrisString: qr.qrisString,
+      ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl } : {}),
+      ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+      raw: qr.raw,
+    };
+  }
+
+  async createCheckout(request: CreateCheckoutRequest, config: XenditConfig): Promise<CheckoutResult> {
+    const invoiceDuration = invoiceDurationSeconds(request.expiresAt);
+    const paymentMethods = mapXenditInvoiceMethods(request.enabledMethods);
+    const data = await this.request<Record<string, unknown>>(`${BASE_URL}/v2/invoices`, {
+      method: "POST",
+      headers: this.jsonHeaders(config),
+      body: JSON.stringify({
+        external_id: request.orderId,
+        amount: request.amount,
+        currency: "IDR",
+        description: request.description ?? `Payment ${request.orderId}`,
+        ...(request.customerEmail ? { payer_email: request.customerEmail } : {}),
+        ...(invoiceDuration ? { invoice_duration: invoiceDuration } : {}),
+        ...(request.returnUrl ? { success_redirect_url: request.returnUrl } : {}),
+        ...(paymentMethods ? { payment_methods: paymentMethods } : {}),
+      }),
+    });
+
+    const checkoutUrl = typeof data.invoice_url === "string" ? data.invoice_url : null;
+    if (!checkoutUrl) {
+      throw new Error("Xendit invoice response tidak mengandung invoice_url");
+    }
+
+    const expiresAt = typeof data.expiry_date === "string" ? new Date(data.expiry_date) : undefined;
+    return {
+      provider: "xendit",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.id ?? request.orderId),
+      checkoutUrl,
+      ...(expiresAt ? { expiresAt } : {}),
       raw: data,
     };
   }

@@ -149,11 +149,11 @@ Untuk provider yang membutuhkan raw body (misalnya DOKU SNAP), teruskan raw body
 | Provider | QRIS direct | VA direct | E-wallet direct | Hosted checkout | Webhook verification |
 | --- | --- | --- | --- | --- | --- |
 | Midtrans | Ya | BCA, BNI, BRI, Permata, CIMB | GoPay, ShopeePay | Snap redirect | SHA512 notification signature |
-| Xendit | Ya | Belum di adapter ini | Belum di adapter ini | Belum di adapter ini | Callback token |
+| Xendit | Ya | Via hosted invoice | Via hosted invoice | Invoice checkout | Callback token |
 | Duitku | Ya | Belum di adapter ini | Belum di adapter ini | Belum di adapter ini | HMAC-SHA256 callback signature |
 | DOKU | Ya | Belum di adapter ini | Belum di adapter ini | Belum di adapter ini | SNAP signature + timestamp window |
 
-Catatan: Xendit, Duitku, dan DOKU menyediakan metode VA/e-wallet/hosted UI di dokumentasi resmi, tetapi adapter `qris-saurus` baru mengaktifkan direct QRIS untuk provider tersebut sampai request/response dan webhook per method diimplementasikan dengan test terpisah.
+Catatan: Xendit VA/e-wallet saat ini sengaja dibuka hanya melalui hosted invoice (`createCheckout()`), bukan direct `createPayment()`, karena response dan webhook direct per channel berbeda. Duitku dan DOKU tetap mengaktifkan QRIS direct saja sampai request/response dan webhook per method non-QRIS diimplementasikan dengan test terpisah.
 
 ## Referensi dokumentasi provider
 
