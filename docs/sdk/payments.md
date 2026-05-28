@@ -181,9 +181,9 @@ Provider lain memakai env config masing-masing (`XENDIT_SECRET_KEY`, `DUITKU_MER
 | Midtrans | Ya | BCA, BNI, BRI, Permata, CIMB | GoPay, ShopeePay | Snap redirect | SHA512 notification signature |
 | Xendit | Ya | Via hosted invoice | Via hosted invoice | Invoice checkout | Callback token |
 | Duitku | Ya | Belum di adapter ini | Belum di adapter ini | Belum di adapter ini | HMAC-SHA256 callback signature |
-| DOKU | Ya | BCA, BNI, BRI, Mandiri, Permata, CIMB | Belum di adapter ini | Belum di adapter ini | SNAP signature + timestamp window |
+| DOKU | Ya | BCA, BNI, BRI, Mandiri, Permata, CIMB | DANA, ShopeePay | Belum di adapter ini | SNAP signature + timestamp window |
 
-Catatan: Xendit VA/e-wallet saat ini sengaja dibuka hanya melalui hosted invoice (`createCheckout()`), bukan direct `createPayment()`, karena response dan webhook direct per channel berbeda. Duitku tetap mengaktifkan QRIS direct saja sampai request/response dan webhook per method non-QRIS diimplementasikan dengan test terpisah. DOKU VA direct membutuhkan `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` dari konfigurasi BIN merchant.
+Catatan: Xendit VA/e-wallet saat ini sengaja dibuka hanya melalui hosted invoice (`createCheckout()`), bukan direct `createPayment()`, karena response dan webhook direct per channel berbeda. Duitku tetap mengaktifkan QRIS direct saja sampai request/response dan webhook per method non-QRIS diimplementasikan dengan test terpisah. DOKU VA direct membutuhkan `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` dari konfigurasi BIN merchant. DOKU e-wallet direct saat ini hanya mengaktifkan flow redirect DANA dan ShopeePay; OVO tetap guarded karena membutuhkan account binding/tokenization terpisah.
 
 ## Referensi dokumentasi provider
 

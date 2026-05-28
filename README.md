@@ -600,7 +600,7 @@ SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai pro
 | Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
 | Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
 | Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
-| DOKU | `doku` | Ya, SNAP QRIS MPM Generate + VA direct | Ya, QRIS MPM Query + helper VA status | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `virtualAccountPartnerServiceId?`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis; VA direct butuh BIN merchant. |
+| DOKU | `doku` | Ya, SNAP QRIS MPM Generate + VA direct + e-wallet DANA/ShopeePay | Ya, QRIS MPM Query + helper VA/e-wallet status | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `virtualAccountPartnerServiceId?`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis; VA direct butuh BIN merchant; OVO tetap guarded karena perlu binding/tokenization. |
 
 Semua provider memakai method gateway yang sama:
 

@@ -349,6 +349,33 @@ describe("dokuAdapter.parseWebhook", () => {
     expect(result.providerMeta?.paymentRequestId).toBe("12839218738127830");
   });
 
+  test("returns normalized E-Wallet payment notification metadata", () => {
+    const ewalletPayload = {
+      originalPartnerReferenceNo: "INV-DOKU-DANA-001",
+      originalReferenceNo: "DOKU-DANA-REF-1",
+      serviceCode: "55",
+      latestTransactionStatus: "00",
+      transactionStatusDesc: "SUCCESS",
+      transAmount: { value: "75000.00", currency: "IDR" },
+      paidTime: "2026-05-07T10:00:05+07:00",
+      additionalInfo: { acquirer: { id: "EMONEY_DANA_SNAP" } },
+    };
+
+    const result = dokuAdapter.parseWebhook(ewalletPayload, config, signedHeaders(ewalletPayload), { now });
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "doku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-DOKU-DANA-001",
+      gatewayTransactionId: "DOKU-DANA-REF-1",
+      status: "paid",
+      amount: 75000,
+    });
+    expect(result.providerMeta?.channel).toBe("EMONEY_DANA_SNAP");
+  });
+
   test("accepts signatures computed from the raw request body", () => {
     const rawBody = JSON.stringify(payload, null, 2);
     const result = dokuAdapter.parseWebhook(payload, config, signedHeadersForBodyString(rawBody), {

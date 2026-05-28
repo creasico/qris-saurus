@@ -24,6 +24,7 @@ describe("remaining provider payment capabilities", () => {
     expect(dokuAdapter.capabilities()).toEqual({
       qris: true,
       virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata", "cimb"] },
+      ewallet: { channels: ["dana", "shopeepay"] },
     });
   });
 });
@@ -299,6 +300,170 @@ describe("dokuAdapter.createPayment", () => {
       bank: "bca",
       vaNumber: "1900800001",
     });
+  });
+
+  test("creates DOKU SNAP DANA e-wallet payment with normalized redirect result", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const urls: string[] = [];
+    let paymentBody: Record<string, any> | undefined;
+
+    globalThis.fetch = (async (input, init) => {
+      urls.push(String(input));
+      if (String(input).includes("/authorization/v1/access-token/b2b")) {
+        return jsonResponse({ responseCode: "2007300", accessToken: "doku-ewallet-token", expiresIn: "900" });
+      }
+      paymentBody = JSON.parse(String(init?.body));
+      return jsonResponse({
+        responseCode: "2000500",
+        responseMessage: "Successful",
+        webRedirectUrl: "https://app-uat.doku.com/link/283702597342040",
+        partnerReferenceNo: "INV-DOKU-DANA-1",
+      });
+    }) as typeof fetch;
+
+    const expiresAt = new Date("2026-05-07T03:00:00.000Z");
+    const result = await dokuAdapter.createPayment(
+      {
+        method: "ewallet",
+        channel: "dana",
+        orderId: "INV-DOKU-DANA-1",
+        amount: 50000,
+        returnUrl: "https://merchant.example/return",
+        description: "Sepatu",
+        expiresAt,
+      },
+      {
+        clientId: "BRN-TEST-UNIQUE-DOKU-DANA",
+        clientSecret: "doku-secret",
+        privateKey: pem,
+        merchantId: "47435",
+        terminalId: "A01",
+        sandbox: true,
+      },
+    );
+
+    expect(urls).toEqual([
+      "https://api-sandbox.doku.com/authorization/v1/access-token/b2b",
+      "https://api-sandbox.doku.com/direct-debit/core/v1/debit/payment-host-to-host",
+    ]);
+    expect(paymentBody).toMatchObject({
+      partnerReferenceNo: "INV-DOKU-DANA-1",
+      validUpTo: "2026-05-07T03:00:00.000Z",
+      pointOfInitiation: "app",
+      urlParam: {
+        url: "https://merchant.example/return",
+        type: "PAY_RETURN",
+        isDeepLink: "N",
+      },
+      amount: { value: "50000.00", currency: "IDR" },
+      additionalInfo: {
+        channel: "EMONEY_DANA_SNAP",
+        orderTitle: "Sepatu",
+      },
+    });
+    expect(result).toMatchObject({
+      provider: "doku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-DOKU-DANA-1",
+      gatewayOrderId: "INV-DOKU-DANA-1",
+      status: "pending",
+      amount: 50000,
+      paymentUrl: "https://app-uat.doku.com/link/283702597342040",
+      deeplinkUrl: "https://app-uat.doku.com/link/283702597342040",
+      expiresAt,
+    });
+  });
+
+  test("rejects DOKU e-wallet channels that require a separate binding flow", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+
+    await expect(dokuAdapter.createPayment(
+      {
+        method: "ewallet",
+        channel: "ovo",
+        orderId: "INV-DOKU-OVO-1",
+        amount: 50000,
+        returnUrl: "https://merchant.example/return",
+      },
+      {
+        clientId: "BRN-TEST-UNIQUE-DOKU-OVO",
+        clientSecret: "doku-secret",
+        privateKey: pem,
+        merchantId: "47435",
+        terminalId: "A01",
+        sandbox: true,
+      },
+    )).rejects.toThrow(/ovo e-wallet direct payment is not supported/);
+  });
+
+  test("checks DOKU e-wallet status through the SNAP debit status endpoint", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const urls: string[] = [];
+    let statusBody: Record<string, any> | undefined;
+
+    globalThis.fetch = (async (input, init) => {
+      urls.push(String(input));
+      if (String(input).includes("/authorization/v1/access-token/b2b")) {
+        return jsonResponse({ responseCode: "2007300", accessToken: "doku-ewallet-status-token", expiresIn: "900" });
+      }
+      statusBody = JSON.parse(String(init?.body));
+      return jsonResponse({
+        responseCode: "2005500",
+        responseMessage: "Successful",
+        originalPartnerReferenceNo: "INV-DOKU-SPAY-PAID",
+        originalReferenceNo: "DOKU-SPAY-REF-1",
+        serviceCode: "55",
+        latestTransactionStatus: "00",
+        transactionStatusDesc: "SUCCESS",
+        transAmount: { value: "50000.00", currency: "IDR" },
+        paidTime: "2026-05-07T10:00:05+07:00",
+        additionalInfo: { acquirer: { id: "EMONEY_SHOPEE_PAY_SNAP" } },
+      });
+    }) as typeof fetch;
+
+    const result = await dokuAdapter.checkEwalletStatus(
+      {
+        orderId: "INV-DOKU-SPAY-PAID",
+        amount: 50000,
+        channel: "shopeepay",
+        transactionDate: "2026-05-07T10:00:00+07:00",
+      },
+      {
+        clientId: "BRN-TEST-UNIQUE-DOKU-SPAY-STATUS",
+        clientSecret: "doku-secret",
+        privateKey: pem,
+        merchantId: "47435",
+        terminalId: "A01",
+        sandbox: true,
+      },
+    );
+
+    expect(urls).toEqual([
+      "https://api-sandbox.doku.com/authorization/v1/access-token/b2b",
+      "https://api-sandbox.doku.com/orders/v1.0/debit/status",
+    ]);
+    expect(statusBody).toMatchObject({
+      originalPartnerReferenceNo: "INV-DOKU-SPAY-PAID",
+      serviceCode: "55",
+      transactionDate: "2026-05-07T10:00:00+07:00",
+      amount: { value: "50000.00", currency: "IDR" },
+      merchantId: "47435",
+      additionalInfo: { channel: "EMONEY_SHOPEE_PAY_SNAP" },
+    });
+    expect(result).toMatchObject({
+      provider: "doku",
+      method: "ewallet",
+      channel: "shopeepay",
+      orderId: "INV-DOKU-SPAY-PAID",
+      gatewayTransactionId: "DOKU-SPAY-REF-1",
+      status: "paid",
+      amount: 50000,
+    });
+    expect(result.paidAt).toBeInstanceOf(Date);
   });
 
   test("wraps SNAP QRIS generation in the normalized PaymentResult shape", async () => {
