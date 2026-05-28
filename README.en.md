@@ -489,6 +489,7 @@ Beyond the legacy QRIS gateway API (`charge()` / `createDynamicQr()`), `qris-sau
 - `gateway.createPayment()` handles direct API/custom UI payments (`qris`, `virtual_account`, `ewallet`).
 - Typed helpers: `createQrisPayment()`, `createVirtualAccount()`, `createEwallet()`.
 - `gateway.createCheckout()` / `gateway.createHostedCheckout()` handles provider-hosted checkout/payment pages.
+- Built-in direct method coverage: Midtrans VA/GoPay/ShopeePay, Xendit VA/e-wallet, Duitku VA/e-wallet, and DOKU VA/DANA/ShopeePay.
 - Webhooks remain the source of truth; redirects and polling are UX/fallback only.
 
 ```ts

@@ -172,7 +172,7 @@ MIDTRANS_SERVER_KEY=SB-Mid-server-... \
 bun run test:sandbox:payments
 ```
 
-Other providers use their own env config (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_CODE`/`DUITKU_MERCHANT_KEY`, or `DOKU_CLIENT_ID`/`DOKU_CLIENT_SECRET`/`DOKU_PRIVATE_KEY`).
+Other providers use their own env config (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_CODE`/`DUITKU_MERCHANT_KEY`, or `DOKU_CLIENT_ID`/`DOKU_CLIENT_SECRET`/`DOKU_PRIVATE_KEY`). Set `SANDBOX_METHODS=qris,virtual_account,ewallet,checkout` to smoke test direct channels; choose channels with `SANDBOX_VA_BANK` and `SANDBOX_EWALLET_CHANNEL`. DOKU VA also requires `DOKU_VA_PARTNER_SERVICE_ID`. Xendit/DOKU/Duitku redirect e-wallets usually require `SANDBOX_RETURN_URL` or `SANDBOX_CALLBACK_URL`; OVO requires `SANDBOX_CUSTOMER_PHONE`.
 
 ## Current Support
 
@@ -184,6 +184,14 @@ Other providers use their own env config (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_
 | DOKU | Yes | BCA, BNI, BRI, Mandiri, Permata, CIMB | DANA, ShopeePay | Not yet in this adapter | SNAP signature + timestamp window |
 
 Note: Xendit direct VA/e-wallet uses the Callback Virtual Account and E-Wallet Charges APIs with e-wallet channel codes `ID_OVO`, `ID_DANA`, `ID_LINKAJA`, and `ID_SHOPEEPAY`; CIMB VA remains guarded because this adapter has no safe direct channel mapping for it. Xendit hosted invoices remain available through `createCheckout()`. Duitku direct VA and e-wallet use the `/v2/inquiry` Direct API with official `paymentMethod` codes (`BC`, `I1`, `BR`, `M2`, `BT`, `B1`, `OV`, `SA`, `DA`, `LF`) and the same HMAC-SHA256 callback verification. DOKU direct VA requires `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` from the merchant BIN configuration. DOKU direct e-wallet currently enables only DANA and ShopeePay redirect flows; OVO remains guarded because it requires separate account binding/tokenization.
+
+## Migration Notes
+
+If you previously used Xendit hosted invoices for VA/e-wallet, `createCheckout()` remains compatible. To move to direct methods, switch to `createVirtualAccount()` or `createEwallet()` and persist result fields such as `vaNumber`, `paymentUrl`, or `deeplinkUrl`; webhooks remain the final status source.
+
+Duitku was previously QRIS-only in this adapter and now supports `createVirtualAccount()` and `createEwallet()` through the same Direct API. Keep `returnUrl` and `callbackUrl` configured because they are used by e-wallet redirects and notifications.
+
+DOKU direct VA requires `virtualAccountPartnerServiceId` from the merchant BIN configuration. If it is missing, VA calls fail fast before contacting the provider; add it to config or env `DOKU_VA_PARTNER_SERVICE_ID`.
 
 ## Provider Documentation References
 
