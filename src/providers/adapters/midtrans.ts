@@ -5,12 +5,21 @@ import { pollUntilSettled, type PollOptions } from "./poller";
 import type {
   ApiQrCreateOptions,
   ApiQrResult,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreateEwalletPaymentRequest,
+  CreatePaymentRequest,
+  CreateVirtualAccountPaymentRequest,
+  EwalletChannel,
   MidtransChargeResponse,
   MidtransConfig,
   MidtransNotificationOptions,
   MidtransWebhookParseResult,
   MidtransWebhookPayload,
+  PaymentResult,
+  ProviderCapabilities,
   RefundOptions,
+  VirtualAccountBank,
   WebhookResult,
 } from "./types";
 
@@ -27,6 +36,13 @@ const STATUS_MAP: Record<string, PaymentStatusCode> = {
 
 const DEFAULT_FETCH_TIMEOUT_MS = 30000; // 30 seconds
 
+const MIDTRANS_CAPABILITIES: ProviderCapabilities = {
+  qris: true,
+  virtualAccount: { banks: ["bca", "bni", "bri", "permata", "cimb"] },
+  ewallet: { channels: ["gopay", "shopeepay"] },
+  hostedCheckout: true,
+};
+
 function parseMidtransDate(value: unknown): Date | undefined {
   return typeof value === "string" ? new Date(value) : undefined;
 }
@@ -38,6 +54,20 @@ function getMidtransActionUrl(
   if (!Array.isArray(actions)) return undefined;
   const action = actions.find((item) => item?.name === actionName);
   return typeof action?.url === "string" ? action.url : undefined;
+}
+
+function mapMidtransSnapMethods(methods: CreateCheckoutRequest["enabledMethods"]): string[] | undefined {
+  if (!methods?.length) return undefined;
+  const mapped = new Set<string>();
+  for (const method of methods) {
+    if (method === "qris") mapped.add("qris");
+    if (method === "virtual_account") mapped.add("bank_transfer");
+    if (method === "ewallet") {
+      mapped.add("gopay");
+      mapped.add("shopeepay");
+    }
+  }
+  return mapped.size > 0 ? Array.from(mapped) : undefined;
 }
 
 function buildMidtransSignature(
@@ -70,6 +100,12 @@ export class MidtransAdapter implements GatewayAdapter {
     return sandbox
       ? "https://api.sandbox.midtrans.com/v2"
       : "https://api.midtrans.com/v2";
+  }
+
+  private snapBaseUrl(sandbox = false): string {
+    return sandbox
+      ? "https://app.sandbox.midtrans.com/snap/v1"
+      : "https://app.midtrans.com/snap/v1";
   }
 
   private authHeader(serverKey: string): string {
@@ -114,6 +150,40 @@ export class MidtransAdapter implements GatewayAdapter {
     }
   }
 
+  capabilities(): ProviderCapabilities {
+    return MIDTRANS_CAPABILITIES;
+  }
+
+  private paymentHeaders(config: MidtransConfig, notificationOptions: MidtransNotificationOptions = {}) {
+    return {
+      Authorization: this.authHeader(config.serverKey),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(notificationOptions.overrideNotificationUrl
+        ? { "X-Override-Notification": notificationOptions.overrideNotificationUrl }
+        : {}),
+      ...(notificationOptions.appendNotificationUrls?.length
+        ? { "X-Append-Notification": notificationOptions.appendNotificationUrls.join(",") }
+        : {}),
+    };
+  }
+
+  private customerDetails(request: CreatePaymentRequest | CreateCheckoutRequest): Record<string, string> | undefined {
+    const details: Record<string, string> = {};
+    if (request.customerName) details.first_name = request.customerName;
+    if (request.customerEmail) details.email = request.customerEmail;
+    if (request.customerPhone) details.phone = request.customerPhone;
+    return Object.keys(details).length > 0 ? details : undefined;
+  }
+
+  private expiryPayload(value: Date | undefined): Record<string, string> | undefined {
+    if (!value) return undefined;
+    return {
+      unit: "second",
+      duration: Math.max(1, Math.floor((value.getTime() - Date.now()) / 1000)).toString(),
+    };
+  }
+
   /**
    * Buat QRIS dinamis via Midtrans Core API.
    * Requires server key dari Midtrans dashboard.
@@ -126,17 +196,7 @@ export class MidtransAdapter implements GatewayAdapter {
     const url = `${this.baseUrl(config.sandbox)}/charge`;
     const data = await this.request<MidtransChargeResponse>(url, {
       method: "POST",
-      headers: {
-        Authorization: this.authHeader(config.serverKey),
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(notificationOptions.overrideNotificationUrl
-          ? { "X-Override-Notification": notificationOptions.overrideNotificationUrl }
-          : {}),
-        ...(notificationOptions.appendNotificationUrls?.length
-          ? { "X-Append-Notification": notificationOptions.appendNotificationUrls.join(",") }
-          : {}),
-      },
+      headers: this.paymentHeaders(config, notificationOptions),
       body: JSON.stringify({
         payment_type: "qris",
         transaction_details: {
@@ -166,6 +226,195 @@ export class MidtransAdapter implements GatewayAdapter {
         : {}),
       ...(typeof data.acquirer === "string" ? { acquirer: data.acquirer } : {}),
       ...(typeof data.payment_type === "string" ? { paymentType: data.payment_type } : {}),
+      raw: data,
+    };
+  }
+
+  async createPayment(
+    request: CreatePaymentRequest,
+    config: MidtransConfig,
+    notificationOptions: MidtransNotificationOptions = {},
+  ): Promise<PaymentResult> {
+    if (request.method === "qris") {
+      const qr = await this.createDynamicQr(request, config, notificationOptions);
+      return {
+        provider: "midtrans",
+        method: "qris",
+        orderId: request.orderId,
+        gatewayOrderId: qr.gatewayOrderId,
+        status: "pending",
+        amount: request.amount,
+        currency: "IDR",
+        ...(qr.expiresAt ? { expiresAt: qr.expiresAt } : {}),
+        qrisString: qr.qrisString,
+        ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl } : {}),
+        ...(qr.qrImageUrlV2 ? { qrImageUrlV2: qr.qrImageUrlV2 } : {}),
+        ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+        ...(qr.acquirer ? { acquirer: qr.acquirer } : {}),
+        raw: qr.raw,
+      };
+    }
+
+    if (request.method === "virtual_account") {
+      return this.createVirtualAccountPayment(request, config, notificationOptions);
+    }
+
+    if (request.method === "ewallet") {
+      return this.createEwalletPayment(request, config, notificationOptions);
+    }
+
+    throw new Error("Midtrans payment_link requires createCheckout() / Snap hosted checkout.");
+  }
+
+  private async createVirtualAccountPayment(
+    request: CreateVirtualAccountPaymentRequest,
+    config: MidtransConfig,
+    notificationOptions: MidtransNotificationOptions,
+  ): Promise<PaymentResult> {
+    const body: Record<string, unknown> = {
+      payment_type: request.bank === "permata" ? "permata" : "bank_transfer",
+      transaction_details: {
+        order_id: request.orderId,
+        gross_amount: request.amount,
+      },
+    };
+
+    const customerDetails = this.customerDetails(request);
+    if (customerDetails) body.customer_details = customerDetails;
+    const expiry = this.expiryPayload(request.expiresAt);
+    if (expiry) body.custom_expiry = expiry;
+
+    if (request.bank !== "permata") {
+      body.bank_transfer = {
+        bank: request.bank,
+        ...(request.vaNumber ? { va_number: request.vaNumber } : {}),
+      };
+    }
+
+    const data = await this.request<MidtransChargeResponse>(`${this.baseUrl(config.sandbox)}/charge`, {
+      method: "POST",
+      headers: this.paymentHeaders(config, notificationOptions),
+      body: JSON.stringify(body),
+    });
+
+    const vaNumber = request.bank === "permata"
+      ? data.permata_va_number
+      : data.va_numbers?.[0]?.va_number;
+    if (!vaNumber) {
+      throw new Error("Midtrans response tidak mengandung nomor virtual account");
+    }
+    const expiresAt = parseMidtransDate(data.expiry_time);
+
+    return {
+      provider: "midtrans",
+      method: "virtual_account",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.order_id ?? request.orderId),
+      ...(typeof data.transaction_id === "string" ? { gatewayTransactionId: data.transaction_id } : {}),
+      status: STATUS_MAP[String(data.transaction_status ?? "pending").toLowerCase()] ?? "pending",
+      amount: request.amount,
+      currency: "IDR",
+      bank: request.bank,
+      vaNumber,
+      ...(expiresAt ? { expiresAt } : {}),
+      raw: data,
+    };
+  }
+
+  private async createEwalletPayment(
+    request: CreateEwalletPaymentRequest,
+    config: MidtransConfig,
+    notificationOptions: MidtransNotificationOptions,
+  ): Promise<PaymentResult> {
+    if (request.channel !== "gopay" && request.channel !== "shopeepay") {
+      throw new Error(`Midtrans e-wallet channel "${request.channel}" is not supported by this adapter.`);
+    }
+
+    const body: Record<string, unknown> = {
+      payment_type: request.channel,
+      transaction_details: {
+        order_id: request.orderId,
+        gross_amount: request.amount,
+      },
+    };
+
+    const customerDetails = this.customerDetails(request);
+    if (customerDetails) body.customer_details = customerDetails;
+    const expiry = this.expiryPayload(request.expiresAt);
+    if (expiry) body.custom_expiry = expiry;
+    if (request.channel === "gopay") {
+      body.gopay = {
+        enable_callback: Boolean(request.callbackUrl),
+        ...(request.callbackUrl ? { callback_url: request.callbackUrl } : {}),
+      };
+    }
+    if (request.channel === "shopeepay" && request.callbackUrl) {
+      body.shopeepay = { callback_url: request.callbackUrl };
+    }
+
+    const data = await this.request<MidtransChargeResponse>(`${this.baseUrl(config.sandbox)}/charge`, {
+      method: "POST",
+      headers: this.paymentHeaders(config, notificationOptions),
+      body: JSON.stringify(body),
+    });
+
+    const paymentUrl = getMidtransActionUrl(data.actions, "deeplink-redirect")
+      ?? getMidtransActionUrl(data.actions, "mobile_deeplink_redirect")
+      ?? getMidtransActionUrl(data.actions, "web_checkout_url");
+    const qrString = getMidtransActionUrl(data.actions, "generate-qr-code")
+      ?? getMidtransActionUrl(data.actions, "generate-qr-code-v2");
+
+    return {
+      provider: "midtrans",
+      method: "ewallet",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.order_id ?? request.orderId),
+      ...(typeof data.transaction_id === "string" ? { gatewayTransactionId: data.transaction_id } : {}),
+      status: STATUS_MAP[String(data.transaction_status ?? "pending").toLowerCase()] ?? "pending",
+      amount: request.amount,
+      currency: "IDR",
+      channel: request.channel,
+      ...(paymentUrl ? { paymentUrl, deeplinkUrl: paymentUrl } : {}),
+      ...(qrString ? { qrImageUrl: qrString } : {}),
+      raw: data,
+    };
+  }
+
+  async createCheckout(
+    request: CreateCheckoutRequest,
+    config: MidtransConfig,
+    notificationOptions: MidtransNotificationOptions = {},
+  ): Promise<CheckoutResult> {
+    const customerDetails = this.customerDetails(request);
+    const expiry = this.expiryPayload(request.expiresAt);
+    const enabledPayments = mapMidtransSnapMethods(request.enabledMethods);
+    const data = await this.request<{ token?: string; redirect_url?: string } & Record<string, unknown>>(
+      `${this.snapBaseUrl(config.sandbox)}/transactions`,
+      {
+        method: "POST",
+        headers: this.paymentHeaders(config, notificationOptions),
+        body: JSON.stringify({
+          transaction_details: {
+            order_id: request.orderId,
+            gross_amount: request.amount,
+          },
+          ...(customerDetails ? { customer_details: customerDetails } : {}),
+          ...(expiry ? { custom_expiry: expiry } : {}),
+          ...(enabledPayments ? { enabled_payments: enabledPayments } : {}),
+        }),
+      },
+    );
+
+    if (typeof data.redirect_url !== "string") {
+      throw new Error("Midtrans Snap response tidak mengandung redirect_url");
+    }
+
+    return {
+      provider: "midtrans",
+      orderId: request.orderId,
+      gatewayOrderId: request.orderId,
+      checkoutUrl: data.redirect_url,
+      ...(typeof data.token === "string" ? { token: data.token } : {}),
       raw: data,
     };
   }

@@ -418,6 +418,107 @@ describe("gateway.useAdapter", () => {
     expect(result.orderId).toBe("MOCK-001");
   });
 
+  test("createPayment falls back to QRIS for QR-only custom adapters", async () => {
+    gateway.useAdapter("mock", mockAdapter, { apiKey: "test" });
+    const result = await gateway.createPayment({
+      method: "qris",
+      orderId: "INV-QR-001",
+      amount: 50000,
+    });
+    expect(result.method).toBe("qris");
+    if (result.method !== "qris") throw new Error("Expected QRIS payment result");
+    expect(result.provider).toBe("mock");
+    expect(result.qrisString).toBe("mock-qr-string");
+  });
+
+  test("createPayment rejects unsupported methods before calling QR-only adapters", async () => {
+    gateway.useAdapter("mock", mockAdapter, { apiKey: "test" });
+    await expect(
+      gateway.createPayment({
+        method: "virtual_account",
+        orderId: "INV-VA-001",
+        amount: 50000,
+        bank: "bca",
+      }),
+    ).rejects.toThrow(ProviderCapabilityError);
+  });
+
+  test("createPayment delegates multi-method requests when adapter declares support", async () => {
+    const adapter = {
+      ...mockAdapter,
+      capabilities: () => ({ virtualAccount: { banks: ["bca" as const] } }),
+      createPayment: async () => ({
+        provider: "mockpay",
+        method: "virtual_account" as const,
+        orderId: "INV-VA-002",
+        gatewayOrderId: "GW-VA-002",
+        status: "pending" as const,
+        amount: 50000,
+        currency: "IDR" as const,
+        bank: "bca" as const,
+        vaNumber: "1234567890",
+        raw: {},
+      }),
+    };
+    gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
+    const result = await gateway.createPayment({
+      method: "virtual_account",
+      orderId: "INV-VA-002",
+      amount: 50000,
+      bank: "bca",
+    });
+    expect(result).toMatchObject({ method: "virtual_account", vaNumber: "1234567890" });
+  });
+
+  test("createPayment enforces adapter capabilities before delegation", async () => {
+    const adapter = {
+      ...mockAdapter,
+      capabilities: () => ({ virtualAccount: { banks: ["bca" as const] } }),
+      createPayment: async () => {
+        throw new Error("should not be called");
+      },
+    };
+    gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
+    await expect(
+      gateway.createPayment({
+        method: "virtual_account",
+        orderId: "INV-VA-003",
+        amount: 50000,
+        bank: "bni",
+      }),
+    ).rejects.toThrow(ProviderCapabilityError);
+  });
+
+  test("createCheckout delegates only when hosted checkout is declared", async () => {
+    const adapter = {
+      ...mockAdapter,
+      capabilities: () => ({ hostedCheckout: true }),
+      createCheckout: async () => ({
+        provider: "mockpay",
+        orderId: "INV-CO-001",
+        gatewayOrderId: "GW-CO-001",
+        checkoutUrl: "https://pay.example/checkout",
+        raw: {},
+      }),
+    };
+    gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
+    const result = await gateway.createCheckout({ orderId: "INV-CO-001", amount: 50000 });
+    expect(result.checkoutUrl).toBe("https://pay.example/checkout");
+  });
+
+  test("createCheckout rejects adapters without hosted checkout capability", async () => {
+    const adapter = {
+      ...mockAdapter,
+      createCheckout: async () => {
+        throw new Error("should not be called");
+      },
+    };
+    gateway.useAdapter("mockpay", adapter, { apiKey: "test" });
+    await expect(gateway.createCheckout({ orderId: "INV-CO-002", amount: 50000 })).rejects.toThrow(
+      ProviderCapabilityError,
+    );
+  });
+
   test("throws on double useAdapter", () => {
     gateway.useAdapter("mock", mockAdapter, {});
     expect(() => gateway.useAdapter("mock2", mockAdapter, {})).toThrow(ConfigurationError);

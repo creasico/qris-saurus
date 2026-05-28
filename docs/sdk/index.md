@@ -153,7 +153,7 @@ Cocok untuk:
 - notifikasi pembayaran via webhook dari gateway
 - reconciliation dan refund via dashboard gateway
 
-Lihat [docs/sdk/gateway.md](./gateway.md) untuk panduan lengkap penggunaan adapter dan cek status pembayaran.
+Lihat [docs/sdk/gateway.md](./gateway.md) untuk panduan lengkap penggunaan adapter QRIS, dan [docs/sdk/payments.md](./payments.md) untuk direct payment multi-method (`createPayment`) serta hosted checkout (`createCheckout`).
 
 ---
 

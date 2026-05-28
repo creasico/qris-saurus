@@ -5,8 +5,13 @@ import { MidtransAdapter } from "../providers/adapters/midtrans";
 import type { PollOptions } from "../providers/adapters/poller";
 import type {
   ApiQrCreateOptions,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreatePaymentRequest,
   MidtransConfig,
   MidtransNotificationOptions,
+  PaymentResult,
+  ProviderCapabilities,
   RefundOptions,
   WebhookParseOptions,
   WebhookResult,
@@ -220,6 +225,11 @@ class Gateway {
     return undefined;
   }
 
+  capabilities(): ProviderCapabilities {
+    const { adapter } = this.assertConfigured();
+    return adapter.capabilities?.() ?? { qris: true };
+  }
+
   async charge(
     orderId: string,
     amount: number,
@@ -238,6 +248,120 @@ class Gateway {
     const extra = this.buildNotificationExtra(config, options);
 
     return adapter.createDynamicQr(qrOptions, mergedConfig, extra);
+  }
+
+  async createPayment(request: CreatePaymentRequest): Promise<PaymentResult> {
+    const { provider, config, adapter } = this.assertConfigured();
+    if (!request.orderId.trim()) {
+      throw new ProviderCapabilityError("Payment orderId is required.");
+    }
+    if (request.currency !== undefined && request.currency !== "IDR") {
+      throw new ProviderCapabilityError("Only IDR payments are currently supported.");
+    }
+    if (!Number.isFinite(request.amount) || request.amount <= 0) {
+      throw new ProviderCapabilityError("Payment amount must be a positive finite number.");
+    }
+
+    const mergedConfig = this.buildChargeConfig(config, {
+      ...(request.description ? { description: request.description } : {}),
+      ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+      ...(request.notificationUrl ? { notificationUrl: request.notificationUrl } : {}),
+      ...(request.returnUrl ? { returnUrl: request.returnUrl } : {}),
+      ...(request.callbackUrl ? { callbackUrl: request.callbackUrl } : {}),
+    });
+    const extra = this.buildNotificationExtra(config, {
+      ...(request.notificationUrl ? { notificationUrl: request.notificationUrl } : {}),
+    });
+
+    if (adapter.createPayment) {
+      const capabilities = this.capabilities();
+      if (request.method === "qris" && capabilities.qris !== true) {
+        throw new ProviderCapabilityError(`Provider "${provider}" does not support QRIS payments.`);
+      }
+      if (
+        request.method === "virtual_account"
+        && !capabilities.virtualAccount?.banks.includes(request.bank)
+      ) {
+        throw new ProviderCapabilityError(
+          `Provider "${provider}" does not support ${request.bank.toUpperCase()} virtual accounts.`,
+        );
+      }
+      if (
+        request.method === "ewallet"
+        && !capabilities.ewallet?.channels.includes(request.channel)
+      ) {
+        throw new ProviderCapabilityError(
+          `Provider "${provider}" does not support ${request.channel} e-wallet payments.`,
+        );
+      }
+      if (request.method === "payment_link" && capabilities.paymentLink !== true) {
+        throw new ProviderCapabilityError(
+          `Provider "${provider}" does not support payment_link payments through createPayment().`,
+        );
+      }
+      return adapter.createPayment(request, mergedConfig, extra);
+    }
+
+    if (request.method !== "qris") {
+      throw new ProviderCapabilityError(
+        `Provider "${provider}" does not support ${request.method} payments through createPayment().`,
+      );
+    }
+
+    const qr = await adapter.createDynamicQr(
+      {
+        orderId: request.orderId,
+        amount: request.amount,
+        ...(request.description ? { description: request.description } : {}),
+        ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+      },
+      mergedConfig,
+      extra,
+    );
+
+    return {
+      provider,
+      method: "qris",
+      orderId: request.orderId,
+      gatewayOrderId: qr.gatewayOrderId,
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      ...(qr.expiresAt ? { expiresAt: qr.expiresAt } : {}),
+      ...(qr.qrisString ? { qrisString: qr.qrisString } : {}),
+      ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl } : {}),
+      ...(qr.qrImageUrlV2 ? { qrImageUrlV2: qr.qrImageUrlV2 } : {}),
+      ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+      ...(qr.acquirer ? { acquirer: qr.acquirer } : {}),
+      raw: qr.raw,
+    };
+  }
+
+  async createCheckout(request: CreateCheckoutRequest): Promise<CheckoutResult> {
+    const { provider, config, adapter } = this.assertConfigured();
+    if (!adapter.createCheckout) {
+      throw new ProviderCapabilityError(
+        `Provider "${provider}" does not support hosted checkout creation.`,
+      );
+    }
+    if (!request.orderId.trim()) {
+      throw new ProviderCapabilityError("Checkout orderId is required.");
+    }
+    if (request.currency !== undefined && request.currency !== "IDR") {
+      throw new ProviderCapabilityError("Only IDR checkout payments are currently supported.");
+    }
+    if (!Number.isFinite(request.amount) || request.amount <= 0) {
+      throw new ProviderCapabilityError("Checkout amount must be a positive finite number.");
+    }
+    if (this.capabilities().hostedCheckout !== true) {
+      throw new ProviderCapabilityError(
+        `Provider "${provider}" does not declare hosted checkout support.`,
+      );
+    }
+    const extra = this.buildNotificationExtra(config, {
+      ...(request.notificationUrl ? { notificationUrl: request.notificationUrl } : {}),
+    });
+    return adapter.createCheckout(request, config, extra);
   }
 
   async status(orderId: string): Promise<GatewayStatusResult> {

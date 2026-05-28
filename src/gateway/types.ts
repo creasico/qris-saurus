@@ -2,9 +2,14 @@ import type { DynamicOptions, PaymentStatusResult } from "../core/types";
 
 import type {
   ApiQrResult,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreatePaymentRequest,
   DokuConfig,
   DuitkuConfig,
   MidtransConfig,
+  PaymentResult,
+  ProviderCapabilities,
   WebhookResult,
   XenditConfig,
 } from "../providers/adapters/types";
@@ -30,6 +35,11 @@ export interface ChargeOptions {
 }
 
 export type GatewayChargeResult = ApiQrResult;
+export type GatewayCreatePaymentRequest = CreatePaymentRequest;
+export type GatewayPaymentResult = PaymentResult;
+export type GatewayCreateCheckoutRequest = CreateCheckoutRequest;
+export type GatewayCheckoutResult = CheckoutResult;
+export type GatewayProviderCapabilities = ProviderCapabilities;
 
 export interface GatewayStatusResult extends PaymentStatusResult {}
 

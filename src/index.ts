@@ -27,9 +27,14 @@ export { ConfigurationError, GatewayError, ProviderCapabilityError } from "./gat
 export type {
   ChargeOptions,
   GatewayChargeResult,
+  GatewayCheckoutResult,
   GatewayConfig,
+  GatewayCreateCheckoutRequest,
+  GatewayCreatePaymentRequest,
   GatewayDynamicOptions,
+  GatewayPaymentResult,
   GatewayProvider,
+  GatewayProviderCapabilities,
   GatewayStatusResult,
   GatewayWebhookResult,
 } from "./gateway/types";

@@ -30,6 +30,7 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 - [Contoh lengkap](#contoh-lengkap)
 - [Penanganan error](#penanganan-error)
 - [Gateway & custom provider](#gateway--custom-provider)
+- [Gateway payments multi-method](#gateway-payments-multi-method)
 - [CLI](#cli)
 - [Rendering dari library](#rendering-dari-library)
 - [API tersedia](#api-tersedia)
@@ -716,6 +717,40 @@ gateway.configure({
   apiKey: "secret" 
 } as any); // custom provider belum ada di tipe GatewayConfig
 ```
+
+## Gateway payments multi-method
+
+Selain QRIS gateway API lama (`charge()` / `createDynamicQr()`), `qris-saurus` sekarang punya fondasi multi-method:
+
+- `gateway.capabilities()` untuk membaca method yang didukung provider.
+- `gateway.createPayment()` untuk direct API/custom UI (`qris`, `virtual_account`, `ewallet`).
+- `gateway.createCheckout()` untuk hosted checkout/payment page provider.
+- Webhook tetap menjadi source of truth; redirect dan polling hanya UX/fallback.
+
+```ts
+gateway.configure({
+  provider: "midtrans",
+  serverKey: process.env.MIDTRANS_SERVER_KEY!,
+  sandbox: true,
+});
+
+const va = await gateway.createPayment({
+  method: "virtual_account",
+  orderId: "INV-VA-001",
+  amount: 50_000,
+  bank: "bca",
+  customerEmail: "customer@example.com",
+});
+
+const checkout = await gateway.createCheckout({
+  orderId: "INV-CO-001",
+  amount: 75_000,
+  enabledMethods: ["qris", "virtual_account", "ewallet"],
+  notificationUrl: "https://merchant.example/webhooks/midtrans",
+});
+```
+
+Lihat [docs/sdk/payments.md](./docs/sdk/payments.md) untuk detail direct payment vs hosted checkout, capability provider, dan best practice webhook.
 
 ## CLI
 

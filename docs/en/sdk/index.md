@@ -147,7 +147,7 @@ Suitable for:
 - payment notifications via gateway webhooks
 - reconciliation and refunds through the gateway dashboard
 
-See [docs/en/sdk/gateway.md](./gateway.md) for a complete guide to adapter usage and payment status checks.
+See [docs/en/sdk/gateway.md](./gateway.md) for QRIS adapter usage, and [docs/en/sdk/payments.md](./payments.md) for multi-method direct payments (`createPayment`) and hosted checkout (`createCheckout`).
 
 ---
 
