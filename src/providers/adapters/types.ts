@@ -19,8 +19,34 @@ export interface XenditConfig {
   callbackToken?: string;
 }
 
+export interface DokuConfig {
+  /** DOKU Client ID / X-PARTNER-ID. */
+  clientId: string;
+  /** DOKU Secret Key used for SNAP symmetric signatures. */
+  clientSecret: string;
+  /** Merchant private key used to sign B2B token requests. */
+  privateKey: string;
+  /** DOKU merchant ID / mall ID for QRIS. */
+  merchantId: string;
+  /** QRIS terminal ID registered in DOKU. */
+  terminalId: string;
+  /** Gunakan sandbox endpoint. Default: false */
+  sandbox?: boolean;
+  /** SNAP channel ID for QRIS. Default: H2H */
+  channelId?: string;
+  /** QRIS status service code. Default: 47 */
+  serviceCode?: string;
+  /** Optional QRIS expiry time in ISO 8601 format. */
+  validityPeriod?: string;
+  /** Additional QRIS metadata, e.g. postalCode and feeType. */
+  additionalInfo?: Record<string, unknown>;
+  /** Merchant webhook path used to verify DOKU notifications, e.g. /webhooks/doku. */
+  webhookPath?: string;
+}
+
 export interface DuitkuConfig {
   merchantCode: string;
+  /** Duitku API key. Kept as merchantKey for backwards compatibility. */
   merchantKey: string;
   /** Gunakan sandbox endpoint. Default: false */
   sandbox?: boolean;
@@ -28,6 +54,13 @@ export interface DuitkuConfig {
   returnUrl: string;
   /** URL callback notifikasi pembayaran dari Duitku. Wajib untuk Duitku createInvoice. */
   callbackUrl: string;
+  /** Duitku QRIS payment method code. Common values: SP, NQ, GQ, SQ. Default: SP */
+  paymentMethod?: string;
+  customerVaName?: string;
+  phoneNumber?: string;
+  expiryPeriod?: number;
+  additionalParam?: string;
+  merchantUserInfo?: string;
 }
 
 export interface ApiQrCreateOptions extends DynamicOptions {

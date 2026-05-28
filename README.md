@@ -130,13 +130,13 @@ flowchart TD
     G --> H["serialize()\n→ String QRIS Dinamis"]
 ```
 
-Untuk fase sekarang, fokus utama library ini adalah **transformasi lokal** dari QRIS statis menjadi QRIS dinamis yang valid. Integrasi API gateway seperti Midtrans/Xendit/Duitku bisa ditambahkan kemudian sebagai layer terpisah.
+Library ini mendukung dua mode: **transformasi lokal** dari QRIS statis menjadi QRIS dinamis, dan **gateway payments** untuk membuat QRIS dinamis langsung lewat API provider seperti Midtrans, Xendit, Duitku, dan DOKU.
 
 ## Goals
 
 - Mengubah QRIS statis menjadi QRIS dinamis secara lokal
 - Memastikan payload tetap valid dengan CRC yang benar
-- Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, dan Duitku
+- Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, Duitku, dan DOKU
 - Mudah di-import dari project Bun/TypeScript lain
 
 ## How It Works
@@ -245,12 +245,20 @@ XENDIT_SECRET_KEY=xnd_development_xxxxxxxxxxxxxxxxxxxxxxxx
 DUITKU_MERCHANT_CODE=Dxxxxx
 DUITKU_MERCHANT_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DUITKU_SANDBOX=true
+
+# DOKU SNAP QRIS
+DOKU_CLIENT_ID=BRN-xxxxxxxx
+DOKU_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DOKU_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
+DOKU_MERCHANT_ID=xxxxxxxx
+DOKU_TERMINAL_ID=A01
+DOKU_SANDBOX=true
 ```
 
 Gunakan dalam kode:
 
 ```ts
-import { midtransAdapter, xenditAdapter, duitkuAdapter } from "qris-saurus";
+import { dokuAdapter, duitkuAdapter, midtransAdapter, xenditAdapter } from "qris-saurus";
 
 const midtransConfig = {
   serverKey: process.env.MIDTRANS_SERVER_KEY!,
@@ -265,6 +273,18 @@ const duitkuConfig = {
   merchantCode: process.env.DUITKU_MERCHANT_CODE!,
   merchantKey: process.env.DUITKU_MERCHANT_KEY!,
   sandbox: process.env.DUITKU_SANDBOX === "true",
+  returnUrl: "https://merchant.example/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+};
+
+const dokuConfig = {
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: process.env.DOKU_SANDBOX === "true",
+  webhookPath: "/webhooks/doku",
 };
 ```
 
@@ -354,7 +374,7 @@ Contoh standalone tersedia di folder [`examples`](./examples):
 ```bash
 bun run examples/basic.ts    # Core API: parse, validate, detect, transform
 bun run examples/render.ts   # Render QR ke file dan data URL
-bun run examples/gateway.ts  # Integrasi gateway (Midtrans, Xendit, Duitku)
+bun run examples/gateway.ts  # Integrasi gateway (Midtrans, Xendit, Duitku, DOKU)
 ```
 
 ### Parse payload QRIS
@@ -568,23 +588,91 @@ try {
 
 ## Gateway & Custom Providers
 
-SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu:
+SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku, DOKU) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu.
+
+### Gateway payments
+
+| Provider | `provider` | Dynamic QRIS | Status polling | Webhook verify | Config wajib | Catatan |
+| -------- | ---------- | ------------ | -------------- | -------------- | ------------ | ------- |
+| Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
+| Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
+| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
+| DOKU | `doku` | Ya, SNAP QRIS MPM Generate | Ya, SNAP QRIS MPM Query | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis. |
+
+Semua provider memakai method gateway yang sama:
 
 ```ts
 import { gateway } from "qris-saurus";
 
-// 1. Configure
-gateway.configure({ 
-  provider: "midtrans",
-  serverKey: "SB-Mid-server-xxx", // atau set environment variable MIDTRANS_SERVER_KEY
-  sandbox: true 
-}); 
+// 1. Configure provider aktif sekali saat boot aplikasi
+gateway.configure({
+  provider: "doku",
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: true,
+  webhookPath: "/webhooks/doku",
+});
 
-// 2. Gunakan method abstrak (charge, verify, status) tanpa peduli provider yang sedang aktif
-const chargeResult = await gateway.charge("INV-001", 50000);
-const statusResult = await gateway.status("INV-001");
-const verifyResult = gateway.verify(webhookPayload, headers); // verify bersifat sinkron
+// 2. Buat QRIS dinamis untuk satu order
+const chargeResult = await gateway.charge("INV-001", 50000, {
+  description: "Pembayaran INV-001",
+  customerEmail: "customer@example.com",
+});
+
+// 3. Cek status atau polling sampai terminal state
+const statusResult = await gateway.status(chargeResult.gatewayOrderId);
+const finalStatus = await gateway.pollPaymentStatus(chargeResult.gatewayOrderId, {
+  intervalMs: 2000,
+  timeoutMs: 60000,
+});
+
+// 4. Verify webhook/callback provider
+const verifyResult = gateway.verify(webhookPayload, headers); // sync
 ```
+
+Status hasil normalisasi selalu memakai union berikut: `pending`, `paid`, `refunded`, `expired`, `failed`, atau `cancelled`. Simpan `gatewayOrderId` dari hasil `charge()` karena beberapa provider mengembalikan ID transaksi gateway yang berbeda dari order ID merchant.
+
+#### Contoh konfigurasi Duitku
+
+```ts
+gateway.configure({
+  provider: "duitku",
+  merchantCode: process.env.DUITKU_MERCHANT_CODE!,
+  merchantKey: process.env.DUITKU_MERCHANT_KEY!, // API key Duitku
+  sandbox: true,
+  returnUrl: "https://merchant.example/payment/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+  paymentMethod: "SP", // default QRIS, bisa disesuaikan dengan channel Duitku yang aktif
+});
+```
+
+Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`.
+
+#### Contoh konfigurasi DOKU
+
+```ts
+gateway.configure({
+  provider: "doku",
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  sandbox: true,
+  channelId: "H2H",
+  serviceCode: "47",
+  webhookPath: "/webhooks/doku",
+  additionalInfo: {
+    postalCode: "12190",
+    feeType: "1",
+  },
+});
+```
+
+DOKU adapter menjalankan flow SNAP: ambil access token B2B dengan RSA-SHA256, generate QRIS MPM dengan Bearer token, lalu query status dengan signature HMAC-SHA512. Untuk webhook DOKU, pastikan `webhookPath` sama persis dengan path endpoint publik yang menerima callback, karena path tersebut menjadi bagian dari string-to-sign.
 
 ### Mendukung Custom Provider (Scaling)
 
@@ -854,8 +942,13 @@ Helper ini berguna kalau kamu ingin:
 - `midtransAdapter.verifyWebhook(payload, config)` / `parseWebhook(payload, config)` / `getWebhookStatus(payload)` — validasi dan normalisasi webhook Midtrans
 - `xenditAdapter.createDynamicQr(options, config)` — buat QR via Xendit API
 - `xenditAdapter.checkPaymentStatus(gatewayOrderId, config)` — cek status pembayaran
-- `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku API
-- `duitkuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran
+- `xenditAdapter.parseWebhook(payload, config, headers)` — validasi callback token dan normalisasi webhook Xendit
+- `duitkuAdapter.createDynamicQr(options, config)` — buat QR via Duitku Direct API
+- `duitkuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran Duitku
+- `duitkuAdapter.parseWebhook(payload, config)` — validasi HMAC-SHA256 dan normalisasi callback Duitku
+- `dokuAdapter.createDynamicQr(options, config)` — buat QR via DOKU SNAP QRIS MPM Generate
+- `dokuAdapter.checkPaymentStatus(orderId, config)` — cek status pembayaran DOKU SNAP QRIS MPM Query
+- `dokuAdapter.parseWebhook(payload, config, headers)` — validasi HMAC-SHA512 SNAP dan normalisasi webhook DOKU
 
 **Render:**
 - `renderQrToDataUrl(qrisString, options?)` — return Base64 PNG data URL

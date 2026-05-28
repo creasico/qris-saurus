@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import { dokuAdapter } from "../../../src/providers/adapters/doku";
 import { duitkuAdapter } from "../../../src/providers/adapters/duitku";
 import { midtransAdapter } from "../../../src/providers/adapters/midtrans";
 import { xenditAdapter } from "../../../src/providers/adapters/xendit";
@@ -129,7 +130,7 @@ describe("xenditAdapter.verifyWebhook", () => {
 });
 
 // ─── Duitku ──────────────────────────────────────────────────────────────────
-// signature = MD5(merchantCode + amount + merchantOrderId + merchantKey)
+// signature = HMAC-SHA256(merchantCode + amount + merchantOrderId, apiKey)
 
 describe("duitkuAdapter.verifyWebhook", () => {
   const config = {
@@ -141,7 +142,7 @@ describe("duitkuAdapter.verifyWebhook", () => {
     amount: "75000",
     merchantOrderId: "INV-001",
     resultCode: "00",
-    signature: "8c9eaf3aea6fd952b49882225ed575ae",
+    signature: "3de1d0dddbddb7febbb1de7293c23d9214213290a3759294eca9b24b86c1f0e4",
   };
 
   test("accepts a valid signature", () => {
@@ -222,7 +223,7 @@ describe("duitkuAdapter.parseWebhook", () => {
     amount: "75000",
     merchantOrderId: "INV-001",
     resultCode: "00",
-    signature: "8c9eaf3aea6fd952b49882225ed575ae",
+    signature: "3de1d0dddbddb7febbb1de7293c23d9214213290a3759294eca9b24b86c1f0e4",
   };
 
   test("returns normalized paid result with valid signature", () => {
@@ -233,16 +234,80 @@ describe("duitkuAdapter.parseWebhook", () => {
     expect(result.amount).toBe(75000);
   });
 
-  test("returns pending status for resultCode 01 with valid signature", () => {
+  test("returns failed status for resultCode 01 with valid signature", () => {
     const payload = { ...validPayload, resultCode: "01" };
     const result = duitkuAdapter.parseWebhook(payload, config);
     expect(result.valid).toBe(true);
-    expect(result.status).toBe("pending");
+    expect(result.status).toBe("failed");
   });
 
   test("returns valid=false when signature is wrong", () => {
     const payload = { ...validPayload, signature: "deadbeef" };
     const result = duitkuAdapter.parseWebhook(payload, config);
     expect(result.valid).toBe(false);
+  });
+});
+
+// ─── DOKU parseWebhook ──────────────────────────────────────────────────────
+
+describe("dokuAdapter.parseWebhook", () => {
+  const config = {
+    clientId: "BRN-TEST",
+    clientSecret: "doku-secret",
+    privateKey: "unused-in-webhook-tests",
+    merchantId: "47435",
+    terminalId: "A01",
+    webhookPath: "/webhooks/doku",
+  };
+
+  const payload = {
+    originalPartnerReferenceNo: "INV-DOKU-001",
+    originalReferenceNo: "DOKU-REF-001",
+    latestTransactionStatus: "00",
+    transactionStatusDesc: "Success",
+    paidTime: "2026-05-07T10:00:05+07:00",
+    amount: { value: "50000.00", currency: "IDR" },
+  };
+
+  function signedHeaders(body: unknown) {
+    const timestamp = "2026-05-07T03:00:00.000Z";
+    const token = "access-token-123";
+    const digest = createHash("sha256")
+      .update(JSON.stringify(body))
+      .digest("hex")
+      .toLowerCase();
+    const stringToSign = `POST:/webhooks/doku:${token}:${digest}:${timestamp}`;
+    const signature = createHmac("sha512", config.clientSecret)
+      .update(stringToSign)
+      .digest("base64");
+    return {
+      "x-timestamp": timestamp,
+      authorization: `Bearer ${token}`,
+      "x-signature": signature,
+    };
+  }
+
+  test("returns normalized paid result with valid SNAP signature", () => {
+    const result = dokuAdapter.parseWebhook(payload, config, signedHeaders(payload));
+    expect(result.valid).toBe(true);
+    expect(result.orderId).toBe("INV-DOKU-001");
+    expect(result.status).toBe("paid");
+    expect(result.amount).toBe(50000);
+    expect(result.paidAt).toBeInstanceOf(Date);
+    expect(result.providerMeta?.referenceNo).toBe("DOKU-REF-001");
+  });
+
+  test("maps latestTransactionStatus 05 to cancelled", () => {
+    const cancelledPayload = { ...payload, latestTransactionStatus: "05" };
+    const result = dokuAdapter.parseWebhook(cancelledPayload, config, signedHeaders(cancelledPayload));
+    expect(result.valid).toBe(true);
+    expect(result.status).toBe("cancelled");
+  });
+
+  test("returns valid=false when signature header is wrong", () => {
+    const headers = { ...signedHeaders(payload), "x-signature": "wrong" };
+    const result = dokuAdapter.parseWebhook(payload, config, headers);
+    expect(result.valid).toBe(false);
+    expect(result.status).toBe("paid");
   });
 });

@@ -6,6 +6,7 @@ export * from "./core/types";
 export * from "./core/validator";
 
 // Provider exports (adapters under 'Adapter' namespace)
+export * from "./providers/adapters/doku";
 export * from "./providers/adapters/duitku";
 export * from "./providers/adapters/midtrans";
 export * from "./providers/adapters/poller";

@@ -36,6 +36,20 @@ describe("gateway.configure", () => {
     ).not.toThrow();
   });
 
+  test("succeeds with doku config", () => {
+    expect(() =>
+      gateway.configure({
+        provider: "doku",
+        clientId: "BRN-TEST",
+        clientSecret: "secret",
+        privateKey: "private-key",
+        merchantId: "47435",
+        terminalId: "A01",
+        sandbox: true,
+      }),
+    ).not.toThrow();
+  });
+
   test("throws ConfigurationError on double configure", () => {
     gateway.configure({ provider: "midtrans", serverKey: "SB-test", sandbox: true });
     expect(() =>
@@ -160,6 +174,45 @@ describe("gateway env-var auto-config", () => {
       else delete process.env.DUITKU_MERCHANT_CODE;
       if (origKey !== undefined) process.env.DUITKU_MERCHANT_KEY = origKey;
       else delete process.env.DUITKU_MERCHANT_KEY;
+    }
+  });
+
+  test("reads DOKU env vars when not in config", () => {
+    const originals = {
+      clientId: process.env.DOKU_CLIENT_ID,
+      clientSecret: process.env.DOKU_CLIENT_SECRET,
+      privateKey: process.env.DOKU_PRIVATE_KEY,
+      merchantId: process.env.DOKU_MERCHANT_ID,
+      terminalId: process.env.DOKU_TERMINAL_ID,
+    };
+    process.env.DOKU_CLIENT_ID = "BRN-ENV";
+    process.env.DOKU_CLIENT_SECRET = "env-secret";
+    process.env.DOKU_PRIVATE_KEY = "env-private-key";
+    process.env.DOKU_MERCHANT_ID = "47435";
+    process.env.DOKU_TERMINAL_ID = "A01";
+    try {
+      expect(() =>
+        gateway.configure({
+          provider: "doku",
+          clientId: "",
+          clientSecret: "",
+          privateKey: "",
+          merchantId: "",
+          terminalId: "",
+          sandbox: true,
+        }),
+      ).not.toThrow();
+    } finally {
+      if (originals.clientId !== undefined) process.env.DOKU_CLIENT_ID = originals.clientId;
+      else delete process.env.DOKU_CLIENT_ID;
+      if (originals.clientSecret !== undefined) process.env.DOKU_CLIENT_SECRET = originals.clientSecret;
+      else delete process.env.DOKU_CLIENT_SECRET;
+      if (originals.privateKey !== undefined) process.env.DOKU_PRIVATE_KEY = originals.privateKey;
+      else delete process.env.DOKU_PRIVATE_KEY;
+      if (originals.merchantId !== undefined) process.env.DOKU_MERCHANT_ID = originals.merchantId;
+      else delete process.env.DOKU_MERCHANT_ID;
+      if (originals.terminalId !== undefined) process.env.DOKU_TERMINAL_ID = originals.terminalId;
+      else delete process.env.DOKU_TERMINAL_ID;
     }
   });
 });
