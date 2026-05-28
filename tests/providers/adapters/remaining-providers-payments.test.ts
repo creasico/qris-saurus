@@ -20,7 +20,11 @@ afterEach(() => {
 describe("remaining provider payment capabilities", () => {
   test("declares only production-wired methods for Xendit, Duitku, and DOKU", () => {
     expect(xenditAdapter.capabilities()).toEqual({ qris: true, hostedCheckout: true });
-    expect(duitkuAdapter.capabilities()).toEqual({ qris: true });
+    expect(duitkuAdapter.capabilities()).toEqual({
+      qris: true,
+      virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata", "cimb"] },
+      ewallet: { channels: ["ovo", "shopeepay", "dana", "linkaja"] },
+    });
     expect(dokuAdapter.capabilities()).toEqual({
       qris: true,
       virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata", "cimb"] },
@@ -108,6 +112,130 @@ describe("xenditAdapter.createPayment/createCheckout", () => {
 });
 
 describe("duitkuAdapter.createPayment", () => {
+  test("creates a Duitku BCA Virtual Account with normalized result", async () => {
+    let requestBody: Record<string, any> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return jsonResponse({
+        statusCode: "00",
+        merchantCode: "DS123",
+        reference: "DUITKU-VA-REF-1",
+        paymentUrl: "https://sandbox.duitku.com/topup/topupdirectv2.aspx?ref=DUITKU-VA-REF-1",
+        vaNumber: "7007014001444348",
+        amount: 50000,
+      });
+    }) as typeof fetch;
+
+    const result = await duitkuAdapter.createPayment(
+      {
+        method: "virtual_account",
+        bank: "bca",
+        orderId: "INV-DUITKU-VA-1",
+        amount: 50000,
+        customerName: "Amin",
+        customerEmail: "amin@example.com",
+      },
+      {
+        merchantCode: "DS123",
+        merchantKey: "merchant-key",
+        returnUrl: "https://merchant.example/return",
+        callbackUrl: "https://merchant.example/webhooks/duitku",
+        sandbox: true,
+      },
+    );
+
+    expect(requestBody).toMatchObject({
+      merchantCode: "DS123",
+      paymentAmount: 50000,
+      paymentMethod: "BC",
+      merchantOrderId: "INV-DUITKU-VA-1",
+      customerVaName: "Amin",
+      email: "amin@example.com",
+      callbackUrl: "https://merchant.example/webhooks/duitku",
+      returnUrl: "https://merchant.example/return",
+    });
+    expect(result).toMatchObject({
+      provider: "duitku",
+      method: "virtual_account",
+      bank: "bca",
+      orderId: "INV-DUITKU-VA-1",
+      gatewayOrderId: "INV-DUITKU-VA-1",
+      gatewayTransactionId: "DUITKU-VA-REF-1",
+      status: "pending",
+      amount: 50000,
+      vaNumber: "7007014001444348",
+      paymentUrl: "https://sandbox.duitku.com/topup/topupdirectv2.aspx?ref=DUITKU-VA-REF-1",
+    });
+  });
+
+  test("creates a Duitku DANA e-wallet payment with normalized redirect result", async () => {
+    let requestBody: Record<string, any> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return jsonResponse({
+        statusCode: "00",
+        merchantCode: "DS123",
+        reference: "DUITKU-DANA-REF-1",
+        paymentUrl: "https://sandbox.duitku.com/topup/topupdirectv2.aspx?ref=DUITKU-DANA-REF-1",
+        appUrl: "https://app-sandbox.duitku.com/redirect_checkout?reference=DUITKU-DANA-REF-1",
+        amount: 50000,
+      });
+    }) as typeof fetch;
+
+    const result = await duitkuAdapter.createPayment(
+      {
+        method: "ewallet",
+        channel: "dana",
+        orderId: "INV-DUITKU-DANA-1",
+        amount: 50000,
+        customerEmail: "customer@example.com",
+        customerPhone: "08123456789",
+      },
+      {
+        merchantCode: "DS123",
+        merchantKey: "merchant-key",
+        returnUrl: "https://merchant.example/return",
+        callbackUrl: "https://merchant.example/webhooks/duitku",
+        sandbox: true,
+      },
+    );
+
+    expect(requestBody).toMatchObject({
+      merchantCode: "DS123",
+      paymentAmount: 50000,
+      paymentMethod: "DA",
+      merchantOrderId: "INV-DUITKU-DANA-1",
+      phoneNumber: "08123456789",
+    });
+    expect(result).toMatchObject({
+      provider: "duitku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-DUITKU-DANA-1",
+      gatewayTransactionId: "DUITKU-DANA-REF-1",
+      paymentUrl: "https://app-sandbox.duitku.com/redirect_checkout?reference=DUITKU-DANA-REF-1",
+      deeplinkUrl: "https://app-sandbox.duitku.com/redirect_checkout?reference=DUITKU-DANA-REF-1",
+    });
+  });
+
+  test("rejects Duitku e-wallet channels without a direct payment method mapping", async () => {
+    await expect(duitkuAdapter.createPayment(
+      {
+        method: "ewallet",
+        channel: "gopay",
+        orderId: "INV-DUITKU-GOPAY-1",
+        amount: 50000,
+      },
+      {
+        merchantCode: "DS123",
+        merchantKey: "merchant-key",
+        returnUrl: "https://merchant.example/return",
+        callbackUrl: "https://merchant.example/webhooks/duitku",
+        sandbox: true,
+      },
+    )).rejects.toThrow(/gopay e-wallet direct payment is not supported/);
+  });
+
   test("wraps QRIS inquiry in the normalized PaymentResult shape", async () => {
     globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({
       statusCode: "00",

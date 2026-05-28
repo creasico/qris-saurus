@@ -180,10 +180,10 @@ Other providers use their own env config (`XENDIT_SECRET_KEY`, `DUITKU_MERCHANT_
 | --- | --- | --- | --- | --- | --- |
 | Midtrans | Yes | BCA, BNI, BRI, Permata, CIMB | GoPay, ShopeePay | Snap redirect | SHA512 notification signature |
 | Xendit | Yes | Via hosted invoice | Via hosted invoice | Invoice checkout | Callback token |
-| Duitku | Yes | Not yet in this adapter | Not yet in this adapter | Not yet in this adapter | HMAC-SHA256 callback signature |
+| Duitku | Yes | BCA, BNI, BRI, Mandiri, Permata, CIMB | OVO, ShopeePay, DANA, LinkAja | Not yet in this adapter | HMAC-SHA256 callback signature |
 | DOKU | Yes | BCA, BNI, BRI, Mandiri, Permata, CIMB | DANA, ShopeePay | Not yet in this adapter | SNAP signature + timestamp window |
 
-Note: Xendit VA/e-wallet support is intentionally exposed through hosted invoices (`createCheckout()`), not direct `createPayment()`, because direct channel responses and webhooks differ per method. Duitku still exposes direct QRIS only until each non-QRIS request/response and webhook flow is implemented with dedicated tests. DOKU direct VA requires `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` from the merchant BIN configuration. DOKU direct e-wallet currently enables only DANA and ShopeePay redirect flows; OVO remains guarded because it requires separate account binding/tokenization.
+Note: Xendit VA/e-wallet support is intentionally exposed through hosted invoices (`createCheckout()`), not direct `createPayment()`, because direct channel responses and webhooks differ per method. Duitku direct VA and e-wallet use the `/v2/inquiry` Direct API with official `paymentMethod` codes (`BC`, `I1`, `BR`, `M2`, `BT`, `B1`, `OV`, `SA`, `DA`, `LF`) and the same HMAC-SHA256 callback verification. DOKU direct VA requires `virtualAccountPartnerServiceId` / `DOKU_VA_PARTNER_SERVICE_ID` from the merchant BIN configuration. DOKU direct e-wallet currently enables only DANA and ShopeePay redirect flows; OVO remains guarded because it requires separate account binding/tokenization.
 
 ## Provider Documentation References
 

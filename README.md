@@ -599,7 +599,7 @@ SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai pro
 | -------- | ---------- | ------------ | -------------- | -------------- | ------------ | ------- |
 | Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
 | Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
-| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
+| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` QRIS + VA + e-wallet | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | QRIS default `SP`; VA memakai `BC`, `I1`, `BR`, `M2`, `BT`, `B1`; e-wallet memakai `OV`, `SA`, `DA`, `LF`. |
 | DOKU | `doku` | Ya, SNAP QRIS MPM Generate + VA direct + e-wallet DANA/ShopeePay | Ya, QRIS MPM Query + helper VA/e-wallet status | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `virtualAccountPartnerServiceId?`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis; VA direct butuh BIN merchant; OVO tetap guarded karena perlu binding/tokenization. |
 
 Semua provider memakai method gateway yang sama:
@@ -654,7 +654,7 @@ gateway.configure({
 });
 ```
 
-Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
+Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. `createPayment()` mendukung QRIS, VA BCA/BNI/BRI/Mandiri/Permata/CIMB, serta e-wallet OVO/ShopeePay/DANA/LinkAja dari kode metode resmi Duitku. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `paymentCode`, `reference`, `vaNumber`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
 
 #### Contoh konfigurasi DOKU
 

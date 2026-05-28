@@ -241,6 +241,52 @@ describe("duitkuAdapter.parseWebhook", () => {
     expect(result.status).toBe("failed");
   });
 
+  test("returns normalized Virtual Account callback metadata", () => {
+    const payload = {
+      ...validPayload,
+      paymentCode: "BC",
+      reference: "DUITKU-VA-REF-1",
+      vaNumber: "7007014001444348",
+      publisherOrderId: "PUB-VA-1",
+    };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "duitku",
+      method: "virtual_account",
+      bank: "bca",
+      orderId: "INV-001",
+      gatewayTransactionId: "DUITKU-VA-REF-1",
+      status: "paid",
+      amount: 75000,
+      vaNumber: "7007014001444348",
+    });
+    expect(result.providerMeta?.paymentCode).toBe("BC");
+  });
+
+  test("returns normalized e-wallet callback metadata", () => {
+    const payload = {
+      ...validPayload,
+      paymentCode: "DA",
+      reference: "DUITKU-DANA-REF-1",
+      publisherOrderId: "PUB-DANA-1",
+    };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "duitku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-001",
+      gatewayTransactionId: "DUITKU-DANA-REF-1",
+      status: "paid",
+      amount: 75000,
+    });
+    expect(result.providerMeta?.paymentCode).toBe("DA");
+  });
+
   test("throws when signature is wrong by default", () => {
     const payload = { ...validPayload, signature: "deadbeef" };
     expect(() => duitkuAdapter.parseWebhook(payload, config)).toThrow(/verification failed/);
