@@ -1,6 +1,6 @@
 # CLI Usage
 
-English | [Indonesian](../cli.md)
+English | [Bahasa Indonesia](../cli.md)
 
 `qris-saurus` provides a simple CLI for inspecting and transforming QRIS payloads.
 

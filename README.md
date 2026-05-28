@@ -13,29 +13,29 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 
 </div>
 
-[English](./README.en.md) | Indonesian
+[English](./README.en.md) | Bahasa Indonesia
 
-## Table of Contents
+## Daftar isi
 
 - [Apa itu QRIS?](#apa-itu-qris)
 - [Bagaimana QRIS bekerja?](#bagaimana-qris-bekerja)
-- [Static vs dynamic QRIS](#static-vs-dynamic-qris)
+- [QRIS statis vs dinamis](#qris-statis-vs-dinamis)
 - [Bagaimana qris-saurus bekerja?](#bagaimana-qris-saurus-bekerja)
-- [Goals](#goals)
-- [How It Works](#how-it-works)
-- [Install](#install)
-- [Configure Environment](#configure-environment)
-- [Quick start](#quick-start)
-- [Implementasi Sederhana](#implementasi-sederhana)
-- [Contoh Lengkap](#contoh-lengkap)
-- [Error Handling](#error-handling)
-- [Gateway & Custom Providers](#gateway--custom-providers)
+- [Tujuan](#tujuan)
+- [Cara kerja](#cara-kerja)
+- [Instalasi](#instalasi)
+- [Konfigurasi environment](#konfigurasi-environment)
+- [Mulai cepat](#mulai-cepat)
+- [Implementasi sederhana](#implementasi-sederhana)
+- [Contoh lengkap](#contoh-lengkap)
+- [Penanganan error](#penanganan-error)
+- [Gateway & custom provider](#gateway--custom-provider)
 - [CLI](#cli)
 - [Rendering dari library](#rendering-dari-library)
-- [Available API](#available-api)
-- [CLI input priority](#cli-input-priority)
-- [Development](#development)
-- [Documentation](#documentation)
+- [API tersedia](#api-tersedia)
+- [Prioritas input CLI](#prioritas-input-cli)
+- [Pengembangan](#pengembangan)
+- [Dokumentasi](#dokumentasi)
 
 ## Apa itu QRIS?
 
@@ -89,7 +89,7 @@ sequenceDiagram
     A-->>M: 8. Notifikasi
 ```
 
-## Static vs dynamic QRIS
+## QRIS statis vs dinamis
 
 ### QRIS statis
 Biasanya dipakai untuk merchant display tetap. Nominal tidak tertanam di payload, sehingga customer mengisi nominal sendiri atau nominal ditentukan dari flow di sisi aplikasi pembayaran.
@@ -130,16 +130,16 @@ flowchart TD
     G --> H["serialize()\n→ String QRIS Dinamis"]
 ```
 
-Library ini mendukung dua mode: **transformasi lokal** dari QRIS statis menjadi QRIS dinamis, dan **gateway payments** untuk membuat QRIS dinamis langsung lewat API provider seperti Midtrans, Xendit, Duitku, dan DOKU.
+Library ini mendukung dua mode: **transformasi lokal** dari QRIS statis menjadi QRIS dinamis, dan **pembayaran gateway** untuk membuat QRIS dinamis langsung lewat API provider seperti Midtrans, Xendit, Duitku, dan DOKU.
 
-## Goals
+## Tujuan
 
 - Mengubah QRIS statis menjadi QRIS dinamis secara lokal
 - Memastikan payload tetap valid dengan CRC yang benar
 - Menyediakan fondasi provider-aware untuk ShopeePay, GoPay, Midtrans, Xendit, Duitku, dan DOKU
 - Mudah di-import dari project Bun/TypeScript lain
 
-## How It Works
+## Cara kerja
 
 QRIS mengikuti **EMVCo QR Code Specification** menggunakan encoding **TLV (Tag-Length-Value)**:
 
@@ -164,7 +164,7 @@ Contoh annotasi payload nyata:
 └──────────────────────────────────────── 58: country code (length 2)
 ```
 
-### Proses konversi static → dynamic
+### Proses konversi statis → dinamis
 
 Saat `staticToDynamic()` dipanggil, library melakukan:
 
@@ -182,7 +182,7 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 7. **Hitung ulang CRC** — CRC16/CCITT atas seluruh payload kecuali 4 char terakhir
 8. **Serialize** — nodes dikembalikan ke string payload
 
-### Key QRIS Tags
+### Tag penting QRIS
 
 | Tag       | Nama                         | Contoh nilai              |
 | --------- | ---------------------------- | ------------------------- |
@@ -201,9 +201,9 @@ Saat `staticToDynamic()` dipanggil, library melakukan:
 | `62`      | Additional data field        | sub-tag `05`, `07`, `08`  |
 | `63`      | CRC                          | 4 char hex                |
 
-## Install
+## Instalasi
 
-Install from your preferred package manager:
+Instal dari package manager yang kamu pakai:
 
 ```bash
 npm install qris-saurus
@@ -217,13 +217,13 @@ pnpm add qris-saurus
 bun add qris-saurus
 ```
 
-If you are working on this repository locally:
+Kalau kamu bekerja langsung di repository ini:
 
 ```bash
 bun install
 ```
 
-## Configure Environment
+## Konfigurasi environment
 
 Buat file `.env` dari template:
 
@@ -288,7 +288,7 @@ const dokuConfig = {
 };
 ```
 
-## Quick start
+## Mulai cepat
 
 ```ts
 import { makeDynamic, staticToDynamic, validate } from "qris-saurus";
@@ -308,7 +308,7 @@ console.log(result.provider);
 console.log(validate(dynamicQris));
 ```
 
-## Implementasi Sederhana
+## Implementasi sederhana
 
 Ada dua cara menggunakan qris-saurus: sebagai **package** (SDK) di project TypeScript/Bun kamu, atau langsung via **CLI** di terminal.
 
@@ -367,7 +367,7 @@ bun run dist/cli.js dynamic "000201010211..." --amount 25000 --merchant-ref INV-
 bun run dist/cli.js render "000201010211..." --output ./qris.png
 ```
 
-## Contoh Lengkap
+## Contoh lengkap
 
 Contoh standalone tersedia di folder [`examples`](./examples):
 
@@ -505,7 +505,7 @@ const dataUrl = await renderQrToDataUrl(qrisString, { width: 320 });
 await renderQrToFile(qrisString, "./qris.png", { width: 400, margin: 3 });
 ```
 
-### Error handling
+### Contoh penanganan error
 
 ```ts
 import { validate, parse, makeDynamic, staticToDynamic } from "qris-saurus";
@@ -537,7 +537,7 @@ try {
 }
 ```
 
-## Error Handling
+## Penanganan error
 
 `validate()` bersifat sinkron dan tidak pernah throw — hasil dikembalikan via `ValidationResult`. Namun `parse()`, `staticToDynamic()`, dan `makeDynamic()` dapat throw bila input tidak valid (CRC hilang/salah, amount tidak valid, dsb). Gateway adapters menggunakan `async/await` dan dapat throw bila request gagal.
 
@@ -586,11 +586,11 @@ try {
 }
 ```
 
-## Gateway & Custom Providers
+## Gateway & custom provider
 
 SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai provider (Midtrans, Xendit, Duitku, DOKU) melalui satu _interface_ yang terpusat. Gateway mendelegasikan panggilan ke adapter tanpa perlu pengecekan provider secara manual di kodemu.
 
-### Gateway payments
+### Pembayaran gateway
 
 | Provider | `provider` | Dynamic QRIS | Status polling | Webhook verify | Config wajib | Catatan |
 | -------- | ---------- | ------------ | -------------- | -------------- | ------------ | ------- |
@@ -676,7 +676,7 @@ gateway.configure({
 
 DOKU adapter menjalankan flow SNAP: ambil access token B2B dengan RSA-SHA256, generate QRIS MPM dengan Bearer token, lalu query status dengan signature HMAC-SHA512. Untuk webhook DOKU, pastikan `webhookPath` sama persis dengan path endpoint publik yang menerima callback, karena path tersebut menjadi bagian dari string-to-sign. Verifikasi webhook menolak timestamp di luar 5 menit secara default (`webhookMaxTimestampSkewMs` atau option `maxTimestampSkewMs`) dan sebaiknya diberi `rawBody` supaya hash signature mengikuti body asli dari DOKU. Seperti Duitku, `parseWebhook()` melempar error bila signature/timestamp tidak valid; `{ throwOnInvalid: false }` mengembalikan hasil aman tanpa status/order palsu.
 
-### Mendukung Custom Provider (Scaling)
+### Mendukung custom provider (scaling)
 
 Arsitektur gateway sangat scalable. Kamu bisa dengan mudah membawa provider-mu sendiri (misal Biller lain atau gateway internal) tanpa perlu memodifikasi core library. Cukup implementasikan _interface_ `GatewayAdapter` yang wajib menyertakan 4 operasi inti: `createDynamicQr`, `checkPaymentStatus`, `parseWebhook`, dan `pollPaymentStatus`.
 
@@ -922,19 +922,19 @@ Helper ini berguna kalau kamu ingin:
 - menyimpan QR image ke file
 - mengirim hasil render ke pipeline lain setelah payload selesai dibentuk
 
-## Available API
+## API tersedia
 
-**Core:**
+**Inti:**
 - `parse(qrisString)` — string → TLV nodes
 - `serialize(qrisData)` — TLV nodes → string
 - `validate(qrisString)` — cek CRC + tag wajib
 - `computeCrc(input)` / `verifyCrc(qrisString)`
 
-**Transform:**
+**Transformasi:**
 - `staticToDynamic(qrisString, options)` — local transform, return string
 - `makeDynamic(qrisString, options)` — local transform + provider detection, return `DynamicResult`
 
-**Providers:**
+**Provider:**
 - `detectProvider(qrisString)` — return `ProviderAdapter | null`
 - `listProviders()` — return semua provider terdaftar
 
@@ -956,7 +956,7 @@ Helper ini berguna kalau kamu ingin:
 - `renderQrToDataUrl(qrisString, options?)` — return Base64 PNG data URL
 - `renderQrToFile(qrisString, outputPath, options?)` — simpan ke file PNG
 
-## CLI input priority
+## Prioritas input CLI
 
 CLI menerima input dengan urutan prioritas:
 1. argumen langsung
@@ -974,7 +974,7 @@ bun run dist/cli.js dynamic --input-file payload.txt --amount 25000
 cat payload.txt | bun run dist/cli.js render --output qris.png
 ```
 
-## Development
+## Pengembangan
 
 ```bash
 bun install
@@ -983,7 +983,7 @@ bun run typecheck
 bun run build
 ```
 
-## Documentation
+## Dokumentasi
 
 Lihat folder [`docs`](./docs):
 

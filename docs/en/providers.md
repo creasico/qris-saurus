@@ -1,6 +1,6 @@
 # Provider Notes
 
-English | [Indonesian](../providers.md)
+English | [Bahasa Indonesia](../providers.md)
 
 ## ShopeePay
 
@@ -33,8 +33,15 @@ English | [Indonesian](../providers.md)
 - detected from a merchant account identifier containing `duitku`
 - supports local QRIS transformation for existing payloads
 - API adapter available: `duitkuAdapter.createDynamicQr()` and `duitkuAdapter.checkPaymentStatus()`
-- signature uses MD5: `merchantCode + amount + orderId + merchantKey`
-  > ⚠️ **Security Warning**: MD5 is cryptographically broken and vulnerable to collision attacks. This is a limitation of the Duitku API. For internal or future integrations, use a stronger algorithm such as HMAC-SHA256. Always validate payloads server-side and monitor API updates for support of safer algorithms.
+- Direct API uses HMAC-SHA256: `merchantCode + merchantOrderId + paymentAmount` for inquiry and `merchantCode + merchantOrderId` for status
+- webhooks are validated with HMAC-SHA256 over `merchantCode + amount + merchantOrderId` and checked against the configured `merchantCode`
+
+## DOKU
+
+- API adapter available: `dokuAdapter.createDynamicQr()` and `dokuAdapter.checkPaymentStatus()`
+- uses SNAP QRIS MPM Generate/Query with RSA-SHA256 B2B access tokens
+- SNAP requests and webhooks are signed with HMAC-SHA512
+- webhooks should be verified with `rawBody`, `webhookPath`, and the default 5-minute timestamp window
 
 ## Detection strategy
 

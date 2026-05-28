@@ -1,6 +1,6 @@
-# Provider Notes
+# Catatan provider
 
-[English](./en/providers.md) | Indonesian
+[English](./en/providers.md) | Bahasa Indonesia
 
 ## ShopeePay
 
@@ -31,11 +31,18 @@
 ## Duitku
 
 - dideteksi dari merchant account identifier yang mengandung `duitku`
-- mendukung local QRIS transformation untuk payload yang sudah ada
+- mendukung transformasi QRIS lokal untuk payload yang sudah ada
 - API adapter tersedia: `duitkuAdapter.createDynamicQr()` dan `duitkuAdapter.checkPaymentStatus()`
-- signature menggunakan MD5: `merchantCode + amount + orderId + merchantKey`
-  > ⚠️ **Security Warning**: MD5 adalah algoritma hash yang sudah cryptographically broken dan rentan terhadap collision attacks. Ini adalah keterbatasan API Duitku. Untuk integrasi internal atau di masa depan, gunakan algoritma yang lebih kuat seperti HMAC-SHA256. Selalu validasi payload di server-side dan monitor updates API untuk support algoritma yang lebih aman.
+- Direct API memakai HMAC-SHA256: `merchantCode + merchantOrderId + paymentAmount` untuk inquiry dan `merchantCode + merchantOrderId` untuk status
+- webhook divalidasi dengan HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` dan dicek terhadap `merchantCode` config
 
-## Detection strategy
+## DOKU
+
+- API adapter tersedia: `dokuAdapter.createDynamicQr()` dan `dokuAdapter.checkPaymentStatus()`
+- memakai SNAP QRIS MPM Generate/Query dengan access token B2B RSA-SHA256
+- request dan webhook SNAP ditandatangani HMAC-SHA512
+- webhook sebaiknya diverifikasi dengan `rawBody`, `webhookPath`, dan batas timestamp default 5 menit
+
+## Strategi deteksi
 
 Deteksi provider dilakukan dengan membaca subtag `00` pada merchant account information (`26`-`51`) lalu mencocokkannya dengan identifier yang dikenal.

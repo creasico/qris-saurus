@@ -1,6 +1,6 @@
 # Gateway Integration
 
-English | [Indonesian](../../sdk/gateway.md)
+English | [Bahasa Indonesia](../../sdk/gateway.md)
 
 This document explains the difference between **local transform** and **gateway APIs**, when to use each, and how to use the available gateway adapters.
 
@@ -26,7 +26,7 @@ The library reads an existing static QRIS payload, modifies it locally, and retu
 
 ## Gateway API — how it works
 
-Gateways such as Midtrans, Xendit, and Duitku provide endpoints for creating new QR codes on their servers. The resulting QR already has expiry metadata, is tied to a gateway order ID, and can be monitored for status.
+Gateways such as Midtrans, Xendit, Duitku, and DOKU provide endpoints for creating new QR codes on their servers. The resulting QR already has expiry metadata, is tied to a gateway order ID, and can be monitored for status.
 
 `qris-saurus` provides ready-to-use adapters for these gateways.
 
@@ -50,12 +50,19 @@ Xendit supports QRIS through the QR Codes API.
 
 ### Duitku
 
-Duitku uses a general transaction flow that can generate a payment URL or QR for QRIS.
+Duitku Direct API generates QRIS through the inquiry endpoint with HMAC-SHA256 signatures.
 
-- Requires: Merchant Code + Merchant Key
-- Expiry: controlled via `expiryPeriod`
-- Callback: via `callbackUrl`
-- Signature note: uses MD5 because of the upstream API requirement
+- Requires: Merchant Code + API key as `merchantKey`
+- Expiry: controlled via `expiryPeriod` when sent
+- Callback: via `callbackUrl`, signed with HMAC-SHA256
+
+### DOKU
+
+DOKU uses SNAP QRIS MPM: obtain a B2B access token with RSA-SHA256, then generate/query QRIS with a Bearer token and HMAC-SHA512 signatures.
+
+- Requires: Client ID, Client Secret, Private Key, Merchant ID, Terminal ID
+- Token: B2B access tokens are cached until shortly before expiry
+- Webhook: SNAP HMAC-SHA512 signature over the callback path and raw body
 
 ### ShopeePay & GoPay
 
@@ -70,13 +77,15 @@ Each gateway exposes an adapter from `qris-saurus`:
 - `midtransAdapter`
 - `xenditAdapter`
 - `duitkuAdapter`
+- `dokuAdapter`
 
 ### Types
 
 ```ts
 interface MidtransConfig { serverKey: string; sandbox?: boolean; }
 interface XenditConfig { secretKey: string; }
-interface DuitkuConfig { merchantCode: string; merchantKey: string; sandbox?: boolean; }
+interface DuitkuConfig { merchantCode: string; merchantKey: string; returnUrl: string; callbackUrl: string; sandbox?: boolean; }
+interface DokuConfig { clientId: string; clientSecret: string; privateKey: string; merchantId: string; terminalId: string; sandbox?: boolean; webhookPath?: string; }
 
 interface ApiQrCreateOptions {
   orderId: string;
@@ -115,6 +124,7 @@ import {
   midtransAdapter,
   xenditAdapter,
   duitkuAdapter,
+  dokuAdapter,
   renderQrToDataUrl,
 } from "qris-saurus";
 
@@ -132,9 +142,29 @@ const xenditQr = await xenditAdapter.createDynamicQr(
   { secretKey: process.env.XENDIT_SECRET_KEY! },
 );
 
+const duitkuConfig = {
+  merchantCode: process.env.DUITKU_CODE!,
+  merchantKey: process.env.DUITKU_KEY!,
+  returnUrl: "https://merchant.example/return",
+  callbackUrl: "https://merchant.example/webhooks/duitku",
+};
 const duitkuQr = await duitkuAdapter.createDynamicQr(
   { orderId: "INV-2026-001", amount: 75_000, customerEmail: "u@example.com" },
-  { merchantCode: process.env.DUITKU_CODE!, merchantKey: process.env.DUITKU_KEY! },
+  duitkuConfig,
+);
+
+const dokuConfig = {
+  clientId: process.env.DOKU_CLIENT_ID!,
+  clientSecret: process.env.DOKU_CLIENT_SECRET!,
+  privateKey: process.env.DOKU_PRIVATE_KEY!,
+  merchantId: process.env.DOKU_MERCHANT_ID!,
+  terminalId: process.env.DOKU_TERMINAL_ID!,
+  webhookPath: "/webhooks/doku",
+  sandbox: true,
+};
+const dokuQr = await dokuAdapter.createDynamicQr(
+  { orderId: "INV-2026-001", amount: 75_000 },
+  dokuConfig,
 );
 
 const image = await renderQrToDataUrl(midtransQr.qrisString);
@@ -166,7 +196,7 @@ Gateway credentials must never be exposed in the frontend or bundled into client
 
 ## Webhook verification
 
-Each adapter provides a `verifyWebhook` method to validate that incoming notifications really come from the gateway. Midtrans also exposes `parseWebhook()` and `getWebhookStatus()` so consumers do not need to duplicate Midtrans-specific status normalization.
+Each adapter provides webhook verification helpers to validate that incoming notifications really come from the gateway. Midtrans exposes `parseWebhook()` and `getWebhookStatus()` for status normalization. Duitku and DOKU `parseWebhook()` throw by default on invalid signatures; pass `{ throwOnInvalid: false }` only when you want a safe `valid: false` result. For DOKU, pass `rawBody` whenever your framework exposes it so the signed body hash matches the original request.
 
 ## Payment status polling
 
@@ -181,3 +211,4 @@ Terminal statuses: **paid**, **expired**, **failed**, **cancelled**.
 | Midtrans | https://docs.midtrans.com/reference/qris             |
 | Xendit   | https://developers.xendit.co/api-reference/#qr-codes |
 | Duitku   | https://docs.duitku.com                              |
+| DOKU     | https://developers.doku.com                          |

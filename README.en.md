@@ -13,7 +13,7 @@ A Bun/TypeScript SDK for parsing, validating, detecting providers, and transform
 
 </div>
 
-English | [Indonesian](./README.md)
+English | [Bahasa Indonesia](./README.md)
 
 ## Table of Contents
 
@@ -125,13 +125,13 @@ flowchart TD
     G --> H["serialize()\n→ Dynamic QRIS String"]
 ```
 
-At the current stage, the library's main focus is **local transformation** from static QRIS into valid dynamic QRIS. Gateway API integrations such as Midtrans/Xendit/Duitku are available as a separate layer.
+The library supports two modes: **local transformation** from static QRIS into valid dynamic QRIS, and **gateway payments** for creating dynamic QRIS directly through providers such as Midtrans, Xendit, Duitku, and DOKU.
 
 ## Goals
 
 - Transform static QRIS into dynamic QRIS locally
 - Keep the payload valid with the correct CRC
-- Provide a provider-aware foundation for ShopeePay, GoPay, Midtrans, Xendit, and Duitku
+- Provide a provider-aware foundation for ShopeePay, GoPay, Midtrans, Xendit, Duitku, and DOKU
 - Be easy to import from other Bun/TypeScript projects
 
 ## Install
@@ -250,7 +250,7 @@ Standalone examples are available in the [`examples`](./examples) folder:
 ```bash
 bun run examples/basic.ts    # Core API: parse, validate, detect, transform
 bun run examples/render.ts   # Render QR to file and data URL
-bun run examples/gateway.ts  # Gateway integration (Midtrans, Xendit, Duitku)
+bun run examples/gateway.ts  # Gateway integration (Midtrans, Xendit, Duitku, DOKU)
 ```
 
 ### Parse a QRIS payload
@@ -419,7 +419,7 @@ try {
 
 ## Gateway & Custom Providers
 
-The SDK provides a `gateway` singleton to simplify integrating various providers (Midtrans, Xendit, Duitku) through a single centralized interface. The gateway delegates calls to the adapter without needing manual provider checks in your code:
+The SDK provides a `gateway` singleton to simplify integrating various providers (Midtrans, Xendit, Duitku, DOKU) through a single centralized interface. The gateway delegates calls to the adapter without needing manual provider checks in your code:
 
 ```ts
 import { gateway } from "qris-saurus";
@@ -435,6 +435,8 @@ gateway.configure({
 const chargeResult = await gateway.charge("INV-001", 50000);
 const statusResult = await gateway.status("INV-001");
 const verifyResult = gateway.verify(webhookPayload, headers); // verify is synchronous
+// DOKU: pass rawBody when your framework exposes it.
+const dokuVerifyResult = gateway.verify(webhookPayload, headers, { rawBody });
 ```
 
 ### Supporting Custom Providers (Scaling)
@@ -500,4 +502,4 @@ See the English docs in [`docs/en`](./docs/en):
 - [`docs/en/providers.md`](./docs/en/providers.md) — provider-specific notes
 - [`docs/en/cli.md`](./docs/en/cli.md) — complete CLI guide
 
-For the original Indonesian documentation, see [`README.md`](./README.md) and [`docs/`](./docs).
+For the Indonesian documentation, see [`README.md`](./README.md) and [`docs/`](./docs).

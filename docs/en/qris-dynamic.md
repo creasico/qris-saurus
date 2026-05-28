@@ -1,6 +1,6 @@
 # QRIS Dynamic Notes
 
-English | [Indonesian](../qris-dynamic.md)
+English | [Bahasa Indonesia](../qris-dynamic.md)
 
 ## TLV structure
 
@@ -105,5 +105,6 @@ A gateway API is more suitable when:
 - Midtrans: `midtransAdapter.createDynamicQr()` + `checkPaymentStatus()`
 - Xendit: `xenditAdapter.createDynamicQr()` + `checkPaymentStatus()`
 - Duitku: `duitkuAdapter.createDynamicQr()` + `checkPaymentStatus()`
+- DOKU: `dokuAdapter.createDynamicQr()` + `checkPaymentStatus()`
 
 See [docs/en/sdk/gateway.md](./sdk/gateway.md) for a complete guide on when to use local transform vs gateway APIs.

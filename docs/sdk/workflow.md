@@ -1,12 +1,12 @@
-# Workflow Guide
+# Panduan Workflow
 
-[English](../en/sdk/workflow.md) | Indonesian
+[English](../en/sdk/workflow.md) | Bahasa Indonesia
 
 Panduan ini menjelaskan alur end-to-end penggunaan `qris-saurus` untuk berbagai skenario nyata.
 
 ---
 
-## Skenario 1 — POS / kasir (local transform)
+## Skenario 1 — POS / kasir (transformasi lokal)
 
 Merchant sudah punya QRIS statis dari acquirer. Kasir memasukkan nominal, sistem menampilkan QR baru untuk tiap transaksi.
 
@@ -79,7 +79,7 @@ export async function createCheckoutQr(orderId: string, amount: number) {
 
 ---
 
-## Skenario 2 — Invoice / e-commerce (local transform)
+## Skenario 2 — Invoice / e-commerce (transformasi lokal)
 
 Sistem membuat invoice, lalu menyisipkan QR ke PDF atau halaman checkout.
 
@@ -262,7 +262,7 @@ Output: string QRIS dinamis baru (CRC valid)
 
 ---
 
-## Tips & best practice
+## Tips & praktik terbaik
 
 1. **Simpan QRIS statis di env var** — jangan hardcode di kode sumber.
 
