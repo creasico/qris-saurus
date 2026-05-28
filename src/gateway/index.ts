@@ -105,7 +105,19 @@ function resolveConfig(config: GatewayConfig, customAdapters: Map<string, () => 
       );
     }
     const sandbox = config.sandbox ?? env.DOKU_SANDBOX === "true";
-    return { ...config, clientId, clientSecret, privateKey, merchantId, terminalId, sandbox };
+    const virtualAccountPartnerServiceId = config.virtualAccountPartnerServiceId
+      || env.DOKU_VA_PARTNER_SERVICE_ID
+      || env.DOKU_VIRTUAL_ACCOUNT_PARTNER_SERVICE_ID;
+    return {
+      ...config,
+      clientId,
+      clientSecret,
+      privateKey,
+      merchantId,
+      terminalId,
+      sandbox,
+      ...(virtualAccountPartnerServiceId ? { virtualAccountPartnerServiceId } : {}),
+    };
   }
 
   if (customAdapters.has((config as any).provider)) {

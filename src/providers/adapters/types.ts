@@ -30,6 +30,10 @@ export interface DokuConfig {
   merchantId: string;
   /** QRIS terminal ID registered in DOKU. */
   terminalId: string;
+  /** DOKU Virtual Account partner service ID / company code (BIN), left-padded by the adapter. */
+  virtualAccountPartnerServiceId?: string;
+  /** Enable reusable DOKU VA payment code. Default follows DOKU behavior (false). */
+  virtualAccountReusableStatus?: boolean;
   /** Gunakan sandbox endpoint. Default: false */
   sandbox?: boolean;
   /** SNAP channel ID for QRIS. Default: H2H */

@@ -253,6 +253,8 @@ DOKU_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DOKU_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
 DOKU_MERCHANT_ID=xxxxxxxx
 DOKU_TERMINAL_ID=A01
+# Required only for direct Virtual Account payments.
+DOKU_VA_PARTNER_SERVICE_ID=19008
 DOKU_SANDBOX=true
 ```
 
@@ -598,7 +600,7 @@ SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai pro
 | Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
 | Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
 | Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
-| DOKU | `doku` | Ya, SNAP QRIS MPM Generate | Ya, SNAP QRIS MPM Query | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis. |
+| DOKU | `doku` | Ya, SNAP QRIS MPM Generate + VA direct | Ya, QRIS MPM Query + helper VA status | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `virtualAccountPartnerServiceId?`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis; VA direct butuh BIN merchant. |
 
 Semua provider memakai method gateway yang sama:
 
@@ -664,6 +666,8 @@ gateway.configure({
   privateKey: process.env.DOKU_PRIVATE_KEY!,
   merchantId: process.env.DOKU_MERCHANT_ID!,
   terminalId: process.env.DOKU_TERMINAL_ID!,
+  // Wajib hanya saat memakai direct Virtual Account.
+  virtualAccountPartnerServiceId: process.env.DOKU_VA_PARTNER_SERVICE_ID,
   sandbox: true,
   channelId: "H2H",
   serviceCode: "47",

@@ -316,6 +316,39 @@ describe("dokuAdapter.parseWebhook", () => {
     expect(result.status).toBe("cancelled");
   });
 
+  test("returns normalized Virtual Account payment notification metadata", () => {
+    const vaPayload = {
+      partnerServiceId: "   19008",
+      customerNo: "00000000000000000001",
+      virtualAccountNo: "  19008000000000000000000001",
+      virtualAccountName: "Customer Name",
+      trxId: "INV-DOKU-VA-001",
+      paymentRequestId: "12839218738127830",
+      paidAmount: { value: "11500.00", currency: "IDR" },
+      additionalInfo: { channel: "VIRTUAL_ACCOUNT_BCA" },
+      trxDateTime: "2026-05-07T10:00:05+07:00",
+      virtualAccountTrxType: "C",
+    };
+    const webhookPayload = {
+      virtualAccountData: vaPayload,
+      additionalInfo: { channel: "VIRTUAL_ACCOUNT_BCA" },
+    };
+
+    const result = dokuAdapter.parseWebhook(webhookPayload, config, signedHeaders(webhookPayload), { now });
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "doku",
+      method: "virtual_account",
+      orderId: "INV-DOKU-VA-001",
+      status: "paid",
+      amount: 11500,
+      bank: "bca",
+      vaNumber: "19008000000000000000000001",
+    });
+    expect(result.providerMeta?.paymentRequestId).toBe("12839218738127830");
+  });
+
   test("accepts signatures computed from the raw request body", () => {
     const rawBody = JSON.stringify(payload, null, 2);
     const result = dokuAdapter.parseWebhook(payload, config, signedHeadersForBodyString(rawBody), {
