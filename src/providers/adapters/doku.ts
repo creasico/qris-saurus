@@ -3,20 +3,58 @@ import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
 import { tokenManager } from "./token-manager";
-import type { ApiQrCreateOptions, ApiQrResult, DokuConfig, WebhookParseOptions, WebhookRawBody, WebhookResult } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CreateEwalletPaymentRequest,
+  CreatePaymentRequest,
+  CreateVirtualAccountPaymentRequest,
+  DokuConfig,
+  EwalletChannel,
+  EwalletPaymentResult,
+  PaymentResult,
+  ProviderCapabilities,
+  VirtualAccountBank,
+  VirtualAccountPaymentResult,
+  WebhookParseOptions,
+  WebhookRawBody,
+  WebhookResult,
+} from "./types";
 
 const DEFAULT_CHANNEL_ID = "H2H";
 const DEFAULT_SERVICE_CODE = "47";
+const DEFAULT_VA_TRX_TYPE = "C";
+const DEFAULT_EWALLET_SERVICE_CODE = "55";
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+const DOKU_EWALLET_CHANNELS: Partial<Record<EwalletChannel, string>> = {
+  dana: "EMONEY_DANA_SNAP",
+  shopeepay: "EMONEY_SHOPEE_PAY_SNAP",
+};
+const DOKU_VA_BANK_CHANNELS: Record<VirtualAccountBank, string> = {
+  bca: "VIRTUAL_ACCOUNT_BCA",
+  bni: "VIRTUAL_ACCOUNT_BNI",
+  bri: "VIRTUAL_ACCOUNT_BRI",
+  mandiri: "VIRTUAL_ACCOUNT_MANDIRI",
+  permata: "VIRTUAL_ACCOUNT_PERMATA",
+  cimb: "VIRTUAL_ACCOUNT_CIMB",
+};
+const DOKU_CAPABILITIES: ProviderCapabilities = {
+  qris: true,
+  virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata", "cimb"] },
+  ewallet: { channels: ["dana", "shopeepay"] },
+};
 const DEFAULT_WEBHOOK_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
   "00": "paid",
+  "01": "pending",
+  "02": "pending",
   "03": "pending",
   "04": "refunded",
   "05": "cancelled",
   "06": "failed",
+  "07": "failed",
 };
 
 interface DokuTokenResponse {
@@ -54,6 +92,72 @@ interface DokuQrQueryResponse {
   };
   additionalInfo?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+interface DokuAmountObject {
+  value?: number | string;
+  currency?: string;
+}
+
+interface DokuVirtualAccountData {
+  partnerServiceId?: string;
+  customerNo?: string | number;
+  virtualAccountNo?: string;
+  virtualAccountName?: string;
+  virtualAccountEmail?: string;
+  virtualAccountPhone?: string;
+  trxId?: string;
+  totalAmount?: DokuAmountObject;
+  paidAmount?: DokuAmountObject;
+  virtualAccountTrxType?: string;
+  expiredDate?: string;
+  paymentRequestId?: string;
+  inquiryRequestId?: string;
+  paymentFlagReason?: { english?: string; indonesia?: string };
+  additionalInfo?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface DokuVirtualAccountResponse {
+  responseCode?: string;
+  responseMessage?: string;
+  virtualAccountData?: DokuVirtualAccountData;
+  additionalInfo?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface DokuDebitPaymentResponse {
+  responseCode?: string;
+  responseMessage?: string;
+  webRedirectUrl?: string;
+  partnerReferenceNo?: string;
+  originalPartnerReferenceNo?: string;
+  originalReferenceNo?: string;
+  latestTransactionStatus?: string;
+  transactionStatusDesc?: string;
+  paidTime?: string;
+  transAmount?: DokuAmountObject;
+  amount?: DokuAmountObject;
+  additionalInfo?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface DokuVirtualAccountStatusParams {
+  partnerServiceId: string;
+  customerNo: string;
+  virtualAccountNo: string;
+  inquiryRequestId?: string;
+  paymentRequestId?: string;
+}
+
+export interface DokuEwalletStatusParams {
+  orderId: string;
+  amount?: number;
+  channel?: EwalletChannel;
+  originalReferenceNo?: string;
+  originalExternalId?: string;
+  transactionDate?: string | Date;
+  serviceCode?: string;
 }
 
 function base64Sha256(input: string): string {
@@ -129,11 +233,89 @@ function parseAmount(value: unknown): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+function trimString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function compactPaymentCode(value: unknown): string | undefined {
+  const str = typeof value === "number" ? String(value) : trimString(value);
+  return str?.replace(/\s+/g, "");
+}
+
+function formatDokuAmount(amount: number): string {
+  return amount.toFixed(2);
+}
+
+function formatPartnerServiceId(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 8) {
+    throw new Error("DOKU virtualAccountPartnerServiceId must be 1-8 characters.");
+  }
+  return trimmed.padStart(8, " ");
+}
+
+function normalizeDokuVaBank(channel: unknown): VirtualAccountBank | undefined {
+  const value = trimString(channel)?.toUpperCase();
+  if (!value) return undefined;
+  const match = Object.entries(DOKU_VA_BANK_CHANNELS).find(([, dokuChannel]) => dokuChannel === value);
+  return match?.[0] as VirtualAccountBank | undefined;
+}
+
+function getDokuVaChannel(additionalInfo: unknown): string | undefined {
+  if (!additionalInfo || typeof additionalInfo !== "object") return undefined;
+  return trimString((additionalInfo as Record<string, unknown>).channel);
+}
+
+function normalizeDokuEwalletChannel(channel: unknown): EwalletChannel | undefined {
+  const value = trimString(channel)?.toUpperCase();
+  if (!value) return undefined;
+  const match = Object.entries(DOKU_EWALLET_CHANNELS).find(([, dokuChannel]) => dokuChannel === value);
+  return match?.[0] as EwalletChannel | undefined;
+}
+
+function getDokuEwalletChannel(additionalInfo: unknown): string | undefined {
+  if (!additionalInfo || typeof additionalInfo !== "object") return undefined;
+  const info = additionalInfo as Record<string, unknown>;
+  const acquirer = info.acquirer;
+  const acquirerId = acquirer && typeof acquirer === "object"
+    ? trimString((acquirer as Record<string, unknown>).id)
+    : undefined;
+  return trimString(info.channel) ?? acquirerId;
+}
+
+function formatDokuDate(value: string | Date | undefined): string | undefined {
+  if (!value) return undefined;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function createCustomerNo(request: CreateVirtualAccountPaymentRequest, partnerServiceId: string): string {
+  if (!request.vaNumber) return "0";
+  const compactPartnerServiceId = partnerServiceId.trim();
+  const compactVaNumber = request.vaNumber.replace(/\s+/g, "");
+  if (!compactVaNumber.startsWith(compactPartnerServiceId)) return compactVaNumber;
+  const customerNo = compactVaNumber.slice(compactPartnerServiceId.length);
+  return customerNo.length > 0 ? customerNo : "0";
+}
+
+function getVaAdditionalInfo(data: DokuVirtualAccountResponse | DokuVirtualAccountData): Record<string, unknown> | undefined {
+  if (data.additionalInfo && typeof data.additionalInfo === "object") return data.additionalInfo;
+  if ("virtualAccountData" in data) {
+    const vaData = (data as DokuVirtualAccountResponse).virtualAccountData as DokuVirtualAccountData | undefined;
+    const nested = vaData?.additionalInfo;
+    if (nested && typeof nested === "object") return nested;
+  }
+  return undefined;
+}
+
 function responseCodeOk(code: unknown): boolean {
   return typeof code === "string" && code.startsWith("200");
 }
 
 export class DokuAdapter implements GatewayAdapter {
+  capabilities(): ProviderCapabilities {
+    return DOKU_CAPABILITIES;
+  }
+
   private baseUrl(sandbox = false): string {
     return sandbox ? "https://api-sandbox.doku.com" : "https://api.doku.com";
   }
@@ -281,6 +463,170 @@ export class DokuAdapter implements GatewayAdapter {
     };
   }
 
+  async createPayment(request: CreatePaymentRequest, config: DokuConfig): Promise<PaymentResult> {
+    if (request.method === "qris") {
+      const qr = await this.createDynamicQr(
+        {
+          orderId: request.orderId,
+          amount: request.amount,
+          ...(request.description ? { description: request.description } : {}),
+          ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+        },
+        config,
+      );
+
+      return {
+        provider: "doku",
+        method: "qris",
+        orderId: request.orderId,
+        gatewayOrderId: qr.gatewayOrderId,
+        status: "pending",
+        amount: request.amount,
+        currency: "IDR",
+        qrisString: qr.qrisString,
+        ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+        raw: qr.raw,
+      };
+    }
+
+    if (request.method === "virtual_account") {
+      return this.createVirtualAccountPayment(request, config);
+    }
+
+    if (request.method === "ewallet") {
+      return this.createEwalletPayment(request, config);
+    }
+
+    throw new Error(`DOKU ${request.method} direct payment is not supported by this adapter yet.`);
+  }
+
+  private async createVirtualAccountPayment(
+    request: CreateVirtualAccountPaymentRequest,
+    config: DokuConfig,
+  ): Promise<VirtualAccountPaymentResult> {
+    const partnerServiceId = config.virtualAccountPartnerServiceId;
+    if (!partnerServiceId) {
+      throw new Error("DOKU virtual_account payments require virtualAccountPartnerServiceId in config.");
+    }
+
+    const formattedPartnerServiceId = formatPartnerServiceId(partnerServiceId);
+    const customerNo = createCustomerNo(request, formattedPartnerServiceId);
+    const channel = DOKU_VA_BANK_CHANNELS[request.bank];
+    const virtualAccountNo = request.vaNumber ?? `${formattedPartnerServiceId}${customerNo}`;
+    const virtualAccountConfig = {
+      ...(config.virtualAccountReusableStatus !== undefined
+        ? { reusableStatus: config.virtualAccountReusableStatus }
+        : {}),
+    };
+    const body = {
+      partnerServiceId: formattedPartnerServiceId,
+      customerNo,
+      virtualAccountNo,
+      virtualAccountName: request.customerName ?? request.customerEmail ?? request.orderId,
+      ...(request.customerEmail ? { virtualAccountEmail: request.customerEmail } : {}),
+      ...(request.customerPhone ? { virtualAccountPhone: request.customerPhone } : {}),
+      trxId: request.orderId,
+      totalAmount: {
+        value: formatDokuAmount(request.amount),
+        currency: request.currency ?? "IDR",
+      },
+      additionalInfo: {
+        channel,
+        ...(Object.keys(virtualAccountConfig).length > 0 ? { virtualAccountConfig } : {}),
+      },
+      virtualAccountTrxType: DEFAULT_VA_TRX_TYPE,
+      ...(request.expiresAt ? { expiredDate: request.expiresAt.toISOString() } : {}),
+    };
+
+    const data = await this.snapRequest<DokuVirtualAccountResponse>(
+      "/virtual-accounts/bi-snap-va/v1.1/transfer-va/create-va",
+      body,
+      config,
+    );
+    const vaData = data.virtualAccountData;
+    const vaNumber = compactPaymentCode(vaData?.virtualAccountNo ?? virtualAccountNo);
+    if (!vaNumber) throw new Error("DOKU response tidak mengandung virtualAccountNo");
+
+    const responseAdditionalInfo = getVaAdditionalInfo(data);
+    const paymentUrl = trimString(responseAdditionalInfo?.howToPayPage);
+    const expiresAt = trimString(vaData?.expiredDate ?? body.expiredDate);
+
+    return {
+      provider: "doku",
+      method: "virtual_account",
+      orderId: request.orderId,
+      gatewayOrderId: String(vaData?.trxId ?? request.orderId),
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      bank: request.bank,
+      vaNumber,
+      ...(paymentUrl ? { paymentUrl } : {}),
+      ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+      raw: data,
+    };
+  }
+
+  private async createEwalletPayment(
+    request: CreateEwalletPaymentRequest,
+    config: DokuConfig,
+  ): Promise<EwalletPaymentResult> {
+    const channel = DOKU_EWALLET_CHANNELS[request.channel];
+    if (!channel) {
+      throw new Error(`DOKU ${request.channel} e-wallet direct payment is not supported by this adapter yet.`);
+    }
+
+    const returnUrl = request.returnUrl ?? request.callbackUrl;
+    if (!returnUrl) {
+      throw new Error("DOKU ewallet payments require returnUrl or callbackUrl.");
+    }
+
+    const body = {
+      partnerReferenceNo: request.orderId,
+      ...(request.expiresAt ? { validUpTo: request.expiresAt.toISOString() } : {}),
+      pointOfInitiation: "app",
+      urlParam: {
+        url: returnUrl,
+        type: "PAY_RETURN",
+        isDeepLink: "N",
+      },
+      amount: {
+        value: formatDokuAmount(request.amount),
+        currency: request.currency ?? "IDR",
+      },
+      additionalInfo: {
+        channel,
+        ...(request.description ? { orderTitle: request.description } : {}),
+        ...(request.metadata?.supportDeepLinkCheckoutUrl !== undefined
+          ? { supportDeepLinkCheckoutUrl: String(request.metadata.supportDeepLinkCheckoutUrl) }
+          : {}),
+      },
+    };
+
+    const data = await this.snapRequest<DokuDebitPaymentResponse>(
+      "/direct-debit/core/v1/debit/payment-host-to-host",
+      body,
+      config,
+    );
+    const paymentUrl = trimString(data.webRedirectUrl);
+    if (!paymentUrl) throw new Error("DOKU response tidak mengandung webRedirectUrl");
+
+    return {
+      provider: "doku",
+      method: "ewallet",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.partnerReferenceNo ?? request.orderId),
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      channel: request.channel,
+      paymentUrl,
+      deeplinkUrl: paymentUrl,
+      ...(request.expiresAt ? { expiresAt: request.expiresAt } : {}),
+      raw: data,
+    };
+  }
+
   async checkPaymentStatus(orderId: string, config: DokuConfig): Promise<PaymentStatusResult> {
     const path = "/snap-adapter/b2b/v1.0/qr/qr-mpm-query";
     const data = await this.snapRequest<DokuQrQueryResponse>(
@@ -306,8 +652,101 @@ export class DokuAdapter implements GatewayAdapter {
       status,
       ...(amount !== undefined ? { amount } : {}),
       ...(paidAt !== undefined ? { paidAt } : {}),
+      provider: "doku",
+      ...(typeof data.originalReferenceNo === "string" ? { gatewayTransactionId: data.originalReferenceNo } : {}),
+      method: "qris",
       raw: data,
     };
+  }
+
+  async checkVirtualAccountStatus(
+    params: DokuVirtualAccountStatusParams,
+    config: DokuConfig,
+  ): Promise<PaymentStatusResult> {
+    const partnerServiceId = formatPartnerServiceId(params.partnerServiceId);
+    const body = {
+      partnerServiceId,
+      customerNo: params.customerNo,
+      virtualAccountNo: params.virtualAccountNo,
+      ...(params.inquiryRequestId ? { inquiryRequestId: params.inquiryRequestId } : {}),
+      ...(params.paymentRequestId ? { paymentRequestId: params.paymentRequestId } : {}),
+      additionalInfo: {},
+    };
+    const data = await this.snapRequest<DokuVirtualAccountResponse>(
+      "/orders/v1.0/transfer-va/status",
+      body,
+      config,
+    );
+    const vaData = data.virtualAccountData;
+    const additionalInfo = getVaAdditionalInfo(data);
+    const channel = getDokuVaChannel(additionalInfo);
+    const bank = normalizeDokuVaBank(channel);
+    const paidAmount = parseAmount(vaData?.paidAmount?.value);
+    const billAmount = parseAmount(vaData?.totalAmount?.value);
+    const paymentReason = vaData?.paymentFlagReason?.english?.toLowerCase();
+    const status: PaymentStatusCode = paidAmount !== undefined
+      ? "paid"
+      : paymentReason?.includes("pending")
+        ? "pending"
+        : "pending";
+    const vaNumber = compactPaymentCode(vaData?.virtualAccountNo ?? params.virtualAccountNo);
+
+    const result: PaymentStatusResult = {
+      orderId: String(vaData?.trxId ?? data.additionalInfo?.trxId ?? params.virtualAccountNo),
+      status,
+      ...(paidAmount !== undefined ? { amount: paidAmount } : billAmount !== undefined ? { amount: billAmount } : {}),
+      provider: "doku",
+      method: "virtual_account",
+      raw: data,
+    };
+    if (bank) result.bank = bank;
+    if (vaNumber) result.vaNumber = vaNumber;
+    return result;
+  }
+
+  async checkEwalletStatus(
+    params: DokuEwalletStatusParams,
+    config: DokuConfig,
+  ): Promise<PaymentStatusResult> {
+    const dokuChannel = params.channel ? DOKU_EWALLET_CHANNELS[params.channel] : undefined;
+    const body = {
+      originalPartnerReferenceNo: params.orderId,
+      ...(params.originalReferenceNo ? { originalReferenceNo: params.originalReferenceNo } : {}),
+      ...(params.originalExternalId ? { originalExternalId: params.originalExternalId } : {}),
+      serviceCode: params.serviceCode ?? DEFAULT_EWALLET_SERVICE_CODE,
+      ...(formatDokuDate(params.transactionDate) ? { transactionDate: formatDokuDate(params.transactionDate) } : {}),
+      ...(params.amount !== undefined ? { amount: { value: formatDokuAmount(params.amount), currency: "IDR" } } : {}),
+      merchantId: config.merchantId,
+      additionalInfo: {
+        ...(dokuChannel ? { channel: dokuChannel } : {}),
+      },
+    };
+    const data = await this.snapRequest<DokuDebitPaymentResponse>(
+      "/orders/v1.0/debit/status",
+      body,
+      config,
+    );
+    const statusCode = String(data.latestTransactionStatus ?? "03");
+    const status = STATUS_MAP[statusCode] ?? "pending";
+    const amount = parseAmount(data.transAmount?.value ?? data.amount?.value);
+    const paidAt = status === "paid" && typeof data.paidTime === "string"
+      ? new Date(data.paidTime)
+      : undefined;
+    const channel = normalizeDokuEwalletChannel(
+      dokuChannel ?? getDokuEwalletChannel(data.additionalInfo),
+    );
+    const result: PaymentStatusResult = {
+      orderId: String(data.originalPartnerReferenceNo ?? params.orderId),
+      status,
+      ...(amount !== undefined ? { amount } : {}),
+      ...(paidAt !== undefined ? { paidAt } : {}),
+      provider: "doku",
+      method: "ewallet",
+      ...(typeof data.originalReferenceNo === "string" ? { gatewayTransactionId: data.originalReferenceNo } : {}),
+      raw: data,
+    };
+    if (channel) result.channel = channel;
+    return result;
   }
 
   verifyWebhook(
@@ -359,25 +798,53 @@ export class DokuAdapter implements GatewayAdapter {
     }
 
     const raw = payload as Record<string, unknown>;
-    const statusCode = String(raw.latestTransactionStatus ?? raw.transactionStatus ?? "03");
-    const status = STATUS_MAP[statusCode] ?? "pending";
-    const amountObject = raw.amount as { value?: unknown } | undefined;
-    const amount = parseAmount(amountObject?.value);
-    const paidAt = status === "paid" && typeof raw.paidTime === "string"
-      ? new Date(raw.paidTime)
+    const vaData = raw.virtualAccountData && typeof raw.virtualAccountData === "object"
+      ? raw.virtualAccountData as DokuVirtualAccountData
       : undefined;
+    const rawAdditionalInfo = raw.additionalInfo && typeof raw.additionalInfo === "object"
+      ? raw.additionalInfo as Record<string, unknown>
+      : undefined;
+    const additionalInfo = vaData
+      ? getVaAdditionalInfo(rawAdditionalInfo ? { virtualAccountData: vaData, additionalInfo: rawAdditionalInfo } : vaData)
+      : rawAdditionalInfo;
+    const ewalletChannelCode = getDokuEwalletChannel(additionalInfo);
+    const ewalletChannel = normalizeDokuEwalletChannel(ewalletChannelCode);
+    const isEwallet = !vaData && (Boolean(ewalletChannel) || raw.serviceCode === DEFAULT_EWALLET_SERVICE_CODE || raw.transAmount !== undefined);
+    const statusCode = String(raw.latestTransactionStatus ?? raw.transactionStatus ?? (vaData ? "00" : "03"));
+    const status = STATUS_MAP[statusCode] ?? "pending";
+    const amountObject = (vaData?.paidAmount ?? raw.transAmount ?? raw.amount) as { value?: unknown } | undefined;
+    const amount = parseAmount(amountObject?.value);
+    const paidAt = status === "paid" && typeof (raw.paidTime ?? vaData?.trxDateTime) === "string"
+      ? new Date(String(raw.paidTime ?? vaData?.trxDateTime))
+      : undefined;
+    const channel = getDokuVaChannel(additionalInfo);
+    const bank = normalizeDokuVaBank(channel);
+    const vaNumber = compactPaymentCode(vaData?.virtualAccountNo);
 
     const providerMeta: Record<string, unknown> = {};
     if (typeof raw.originalReferenceNo === "string") providerMeta.referenceNo = raw.originalReferenceNo;
     if (typeof raw.transactionStatusDesc === "string") providerMeta.transactionStatusDesc = raw.transactionStatusDesc;
-    if (raw.additionalInfo && typeof raw.additionalInfo === "object") providerMeta.additionalInfo = raw.additionalInfo;
+    if (typeof vaData?.paymentRequestId === "string") providerMeta.paymentRequestId = vaData.paymentRequestId;
+    if (channel) providerMeta.channel = channel;
+    if (ewalletChannelCode) providerMeta.channel = ewalletChannelCode;
+    if (additionalInfo && typeof additionalInfo === "object") providerMeta.additionalInfo = additionalInfo;
 
     return {
       valid: true,
-      orderId: String(raw.originalPartnerReferenceNo ?? raw.partnerReferenceNo ?? ""),
+      orderId: String(vaData?.trxId ?? raw.originalPartnerReferenceNo ?? raw.partnerReferenceNo ?? ""),
       status,
       ...(amount !== undefined ? { amount } : {}),
       ...(paidAt !== undefined ? { paidAt } : {}),
+      provider: "doku",
+      ...(typeof raw.originalReferenceNo === "string" ? { gatewayTransactionId: raw.originalReferenceNo } : {}),
+      ...(vaData
+        ? { method: "virtual_account" as const }
+        : isEwallet
+          ? { method: "ewallet" as const }
+          : { method: "qris" as const }),
+      ...(bank ? { bank } : {}),
+      ...(vaNumber ? { vaNumber } : {}),
+      ...(ewalletChannel ? { channel: ewalletChannel } : {}),
       ...(Object.keys(providerMeta).length > 0 ? { providerMeta } : {}),
       raw: payload,
     };

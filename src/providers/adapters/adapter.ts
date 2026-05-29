@@ -1,6 +1,16 @@
 import type { PaymentStatusResult } from "../../core/types";
 import type { PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, WebhookParseOptions, WebhookResult } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreatePaymentRequest,
+  PaymentResult,
+  ProviderCapabilities,
+  WebhookParseOptions,
+  WebhookResult,
+} from "./types";
 
 /**
  * Unified contract for all payment gateway adapters.
@@ -13,6 +23,23 @@ import type { ApiQrCreateOptions, ApiQrResult, WebhookParseOptions, WebhookResul
  *   class MyProviderAdapter implements GatewayAdapter { ... }
  */
 export interface GatewayAdapter {
+  /** Declare provider capabilities so callers can choose supported payment flows safely. */
+  capabilities?(): ProviderCapabilities;
+
+  /** Create a normalized payment via the provider API. */
+  createPayment?(
+    request: CreatePaymentRequest,
+    config: unknown,
+    extra?: unknown,
+  ): Promise<PaymentResult>;
+
+  /** Create a provider-hosted checkout/payment page if supported. */
+  createCheckout?(
+    request: CreateCheckoutRequest,
+    config: unknown,
+    extra?: unknown,
+  ): Promise<CheckoutResult>;
+
   /** Create a dynamic QRIS payment via the provider API. */
   createDynamicQr(
     options: ApiQrCreateOptions,

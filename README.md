@@ -30,6 +30,7 @@ Bun/TypeScript SDK untuk parse, validasi, deteksi provider, dan transformasi QRI
 - [Contoh lengkap](#contoh-lengkap)
 - [Penanganan error](#penanganan-error)
 - [Gateway & custom provider](#gateway--custom-provider)
+- [Gateway payments multi-method](#gateway-payments-multi-method)
 - [CLI](#cli)
 - [Rendering dari library](#rendering-dari-library)
 - [API tersedia](#api-tersedia)
@@ -252,6 +253,8 @@ DOKU_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DOKU_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
 DOKU_MERCHANT_ID=xxxxxxxx
 DOKU_TERMINAL_ID=A01
+# Required only for direct Virtual Account payments.
+DOKU_VA_PARTNER_SERVICE_ID=19008
 DOKU_SANDBOX=true
 ```
 
@@ -595,9 +598,9 @@ SDK ini menyediakan `gateway` singleton untuk mempermudah integrasi berbagai pro
 | Provider | `provider` | Dynamic QRIS | Status polling | Webhook verify | Config wajib | Catatan |
 | -------- | ---------- | ------------ | -------------- | -------------- | ------------ | ------- |
 | Midtrans | `midtrans` | Ya, via `/v2/charge` QRIS | Ya | Signature SHA512 dari payload + `serverKey` | `serverKey`, `sandbox?` | Mendukung `cancel()`, `expire()`, dan `refund()` lewat gateway helper. |
-| Xendit | `xendit` | Ya, via QR Code API | Ya | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | `cancel()`, `expire()`, dan `refund()` belum tersedia di adapter ini. |
-| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | Memakai signature Direct API terbaru; `paymentMethod` default `SP` untuk QRIS. |
-| DOKU | `doku` | Ya, SNAP QRIS MPM Generate | Ya, SNAP QRIS MPM Query | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis. |
+| Xendit | `xendit` | Ya, QR Code API + VA direct + e-wallet direct + hosted invoice | Ya, QRIS polling + webhook callback token | `x-callback-token` bila `callbackToken` diset | `secretKey`, `callbackToken?` | VA direct memakai BCA/BNI/BRI/Mandiri/Permata; e-wallet direct memakai `ID_OVO`, `ID_DANA`, `ID_LINKAJA`, `ID_SHOPEEPAY`. CIMB VA tetap guarded. |
+| Duitku | `duitku` | Ya, Direct API `/v2/inquiry` QRIS + VA + e-wallet | Ya, `/transactionStatus` | HMAC-SHA256 dari `merchantCode + amount + merchantOrderId` | `merchantCode`, `merchantKey`, `returnUrl`, `callbackUrl`, `sandbox?` | QRIS default `SP`; VA memakai `BC`, `I1`, `BR`, `M2`, `BT`, `B1`; e-wallet memakai `OV`, `SA`, `DA`, `LF`. |
+| DOKU | `doku` | Ya, SNAP QRIS MPM Generate + VA direct + e-wallet DANA/ShopeePay | Ya, QRIS MPM Query + helper VA/e-wallet status | HMAC-SHA512 SNAP dari method, path, token, body hash, timestamp | `clientId`, `clientSecret`, `privateKey`, `merchantId`, `terminalId`, `virtualAccountPartnerServiceId?`, `webhookPath?`, `sandbox?` | Access token B2B ditandatangani RSA-SHA256 dan dicache otomatis; VA direct butuh BIN merchant; OVO tetap guarded karena perlu binding/tokenization. |
 
 Semua provider memakai method gateway yang sama:
 
@@ -651,7 +654,7 @@ gateway.configure({
 });
 ```
 
-Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `reference`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
+Duitku adapter mengirim `paymentAmount`, `paymentMethod`, `merchantOrderId`, `productDetails`, `callbackUrl`, `returnUrl`, dan signature HMAC-SHA256 ke endpoint inquiry. `createPayment()` mendukung QRIS, VA BCA/BNI/BRI/Mandiri/Permata/CIMB, serta e-wallet OVO/ShopeePay/DANA/LinkAja dari kode metode resmi Duitku. Callback diparse dari `merchantOrderId`, `amount`, `resultCode`, `paymentCode`, `reference`, `vaNumber`, dan `signature`. Secara default, `parseWebhook()` melempar error bila signature tidak valid; gunakan `{ throwOnInvalid: false }` hanya jika ingin menerima hasil aman `valid: false` tanpa field pembayaran ternormalisasi.
 
 #### Contoh konfigurasi DOKU
 
@@ -663,6 +666,8 @@ gateway.configure({
   privateKey: process.env.DOKU_PRIVATE_KEY!,
   merchantId: process.env.DOKU_MERCHANT_ID!,
   terminalId: process.env.DOKU_TERMINAL_ID!,
+  // Wajib hanya saat memakai direct Virtual Account.
+  virtualAccountPartnerServiceId: process.env.DOKU_VA_PARTNER_SERVICE_ID,
   sandbox: true,
   channelId: "H2H",
   serviceCode: "47",
@@ -716,6 +721,39 @@ gateway.configure({
   apiKey: "secret" 
 } as any); // custom provider belum ada di tipe GatewayConfig
 ```
+
+## Gateway payments multi-method
+
+Selain QRIS gateway API lama (`charge()` / `createDynamicQr()`), `qris-saurus` sekarang punya fondasi multi-method:
+
+- `gateway.capabilities()` untuk membaca method yang didukung provider.
+- `gateway.createPayment()` untuk direct API/custom UI (`qris`, `virtual_account`, `ewallet`).
+- Helper typed: `createQrisPayment()`, `createVirtualAccount()`, `createEwallet()`.
+- `gateway.createCheckout()` / `gateway.createHostedCheckout()` untuk hosted checkout/payment page provider.
+- Webhook tetap menjadi source of truth; redirect dan polling hanya UX/fallback.
+
+```ts
+gateway.configure({
+  provider: "midtrans",
+  serverKey: process.env.MIDTRANS_SERVER_KEY!,
+  sandbox: true,
+});
+
+const va = await gateway.createVirtualAccount({
+  orderId: "INV-VA-001",
+  amount: 50_000,
+  bank: "bca",
+});
+
+const checkout = await gateway.createCheckout({
+  orderId: "INV-CO-001",
+  amount: 75_000,
+  enabledMethods: ["qris", "virtual_account", "ewallet"],
+  notificationUrl: "https://merchant.example/webhooks/midtrans",
+});
+```
+
+Lihat [docs/sdk/payments.md](./docs/sdk/payments.md) untuk detail direct payment vs hosted checkout, capability provider, dan best practice webhook.
 
 ## CLI
 

@@ -2,7 +2,22 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, DuitkuConfig, WebhookParseOptions, WebhookResult } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CreateEwalletPaymentRequest,
+  CreatePaymentRequest,
+  CreateVirtualAccountPaymentRequest,
+  DuitkuConfig,
+  EwalletChannel,
+  EwalletPaymentResult,
+  PaymentResult,
+  ProviderCapabilities,
+  VirtualAccountBank,
+  VirtualAccountPaymentResult,
+  WebhookParseOptions,
+  WebhookResult,
+} from "./types";
 
 // transactionStatus: 00 success, 01 process/pending, 02 failed/expired.
 const STATUS_MAP: Record<string, PaymentStatusCode> = {
@@ -18,6 +33,25 @@ const CALLBACK_STATUS_MAP: Record<string, PaymentStatusCode> = {
 };
 
 const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+const DUITKU_VA_BANK_METHODS: Record<VirtualAccountBank, string> = {
+  bca: "BC",
+  bni: "I1",
+  bri: "BR",
+  mandiri: "M2",
+  permata: "BT",
+  cimb: "B1",
+};
+const DUITKU_EWALLET_METHODS: Partial<Record<EwalletChannel, string>> = {
+  ovo: "OV",
+  shopeepay: "SA",
+  dana: "DA",
+  linkaja: "LF",
+};
+const DUITKU_CAPABILITIES: ProviderCapabilities = {
+  qris: true,
+  virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata", "cimb"] },
+  ewallet: { channels: ["ovo", "shopeepay", "dana", "linkaja"] },
+};
 const DEFAULT_QRIS_PAYMENT_METHOD = "SP";
 const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 160;
 
@@ -40,6 +74,24 @@ function parseAmount(value: unknown): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+function compactPaymentCode(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.replace(/\s+/g, "");
+  return compact.length > 0 ? compact : undefined;
+}
+
+function normalizeDuitkuVaBank(code: unknown): VirtualAccountBank | undefined {
+  if (typeof code !== "string") return undefined;
+  const entry = Object.entries(DUITKU_VA_BANK_METHODS).find(([, method]) => method === code);
+  return entry?.[0] as VirtualAccountBank | undefined;
+}
+
+function normalizeDuitkuEwalletChannel(code: unknown): EwalletChannel | undefined {
+  if (typeof code !== "string") return undefined;
+  const entry = Object.entries(DUITKU_EWALLET_METHODS).find(([, method]) => method === code);
+  return entry?.[0] as EwalletChannel | undefined;
+}
+
 function sanitizeProviderMessage(value: unknown): string {
   const message = typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -58,6 +110,10 @@ function invalidWebhookResult(raw: unknown): WebhookResult {
 }
 
 export class DuitkuAdapter implements GatewayAdapter {
+  capabilities(): ProviderCapabilities {
+    return DUITKU_CAPABILITIES;
+  }
+
   private baseUrl(sandbox = false): string {
     return sandbox
       ? "https://sandbox.duitku.com/webapi/api/merchant"
@@ -105,6 +161,42 @@ export class DuitkuAdapter implements GatewayAdapter {
     }
   }
 
+  private async createInquiry(
+    request: Pick<ApiQrCreateOptions, "orderId" | "amount" | "description" | "customerEmail"> & {
+      customerName?: string;
+      customerPhone?: string;
+    },
+    paymentMethod: string,
+    config: DuitkuConfig,
+  ): Promise<Record<string, unknown>> {
+    const signature = hmacSha256(
+      config.merchantCode + request.orderId + request.amount,
+      config.merchantKey,
+    );
+
+    return this.request<Record<string, unknown>>(
+      `${this.baseUrl(config.sandbox)}/v2/inquiry`,
+      {
+        merchantCode: config.merchantCode,
+        paymentAmount: request.amount,
+        paymentMethod,
+        merchantOrderId: request.orderId,
+        productDetails: request.description ?? `Pembayaran ${request.orderId}`,
+        additionalParam: config.additionalParam ?? "",
+        merchantUserInfo: config.merchantUserInfo ?? "",
+        customerVaName: request.customerName ?? config.customerVaName ?? "Customer",
+        email: request.customerEmail ?? `no-reply+${config.merchantCode}@duitku.local`,
+        ...(request.customerPhone || config.phoneNumber
+          ? { phoneNumber: request.customerPhone ?? config.phoneNumber }
+          : {}),
+        callbackUrl: config.callbackUrl,
+        returnUrl: config.returnUrl,
+        signature,
+        ...(config.expiryPeriod !== undefined ? { expiryPeriod: config.expiryPeriod } : {}),
+      },
+    );
+  }
+
   /**
    * Buat QRIS dinamis via Duitku Direct API.
    * Signature: HMAC-SHA256(merchantCode + merchantOrderId + paymentAmount, apiKey)
@@ -113,29 +205,10 @@ export class DuitkuAdapter implements GatewayAdapter {
     options: ApiQrCreateOptions,
     config: DuitkuConfig,
   ): Promise<ApiQrResult> {
-    const signature = hmacSha256(
-      config.merchantCode + options.orderId + options.amount,
-      config.merchantKey,
-    );
-
-    const data = await this.request<Record<string, unknown>>(
-      `${this.baseUrl(config.sandbox)}/v2/inquiry`,
-      {
-        merchantCode: config.merchantCode,
-        paymentAmount: options.amount,
-        paymentMethod: config.paymentMethod ?? DEFAULT_QRIS_PAYMENT_METHOD,
-        merchantOrderId: options.orderId,
-        productDetails: options.description ?? `Pembayaran ${options.orderId}`,
-        additionalParam: config.additionalParam ?? "",
-        merchantUserInfo: config.merchantUserInfo ?? "",
-        customerVaName: config.customerVaName ?? "Customer",
-        email: options.customerEmail ?? `no-reply+${config.merchantCode}@duitku.local`,
-        ...(config.phoneNumber ? { phoneNumber: config.phoneNumber } : {}),
-        callbackUrl: config.callbackUrl,
-        returnUrl: config.returnUrl,
-        signature,
-        ...(config.expiryPeriod !== undefined ? { expiryPeriod: config.expiryPeriod } : {}),
-      },
+    const data = await this.createInquiry(
+      options,
+      config.paymentMethod ?? DEFAULT_QRIS_PAYMENT_METHOD,
+      config,
     );
 
     const statusCode = String(data.statusCode ?? "");
@@ -156,6 +229,118 @@ export class DuitkuAdapter implements GatewayAdapter {
       gatewayOrderId: options.orderId,
       ...(typeof data.reference === "string" ? { gatewayTransactionId: data.reference } : {}),
       ...(typeof data.paymentUrl === "string" ? { qrImageUrl: data.paymentUrl } : {}),
+      raw: data,
+    };
+  }
+
+  async createPayment(request: CreatePaymentRequest, config: DuitkuConfig): Promise<PaymentResult> {
+    if (request.method === "qris") {
+      const qr = await this.createDynamicQr(
+        {
+          orderId: request.orderId,
+          amount: request.amount,
+          ...(request.description ? { description: request.description } : {}),
+          ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+        },
+        config,
+      );
+
+      return {
+        provider: "duitku",
+        method: "qris",
+        orderId: request.orderId,
+        gatewayOrderId: qr.gatewayOrderId,
+        status: "pending",
+        amount: request.amount,
+        currency: "IDR",
+        qrisString: qr.qrisString,
+        ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl, paymentUrl: qr.qrImageUrl } : {}),
+        ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+        raw: qr.raw,
+      };
+    }
+
+    if (request.method === "virtual_account") {
+      return this.createVirtualAccountPayment(request, config);
+    }
+
+    if (request.method === "ewallet") {
+      return this.createEwalletPayment(request, config);
+    }
+
+    throw new Error(`Duitku ${request.method} direct payment is not supported by this adapter yet.`);
+  }
+
+  private async createVirtualAccountPayment(
+    request: CreateVirtualAccountPaymentRequest,
+    config: DuitkuConfig,
+  ): Promise<VirtualAccountPaymentResult> {
+    const paymentMethod = DUITKU_VA_BANK_METHODS[request.bank];
+    const data = await this.createInquiry(request, paymentMethod, config);
+    const statusCode = String(data.statusCode ?? "");
+    if (statusCode !== "00") {
+      throw createProviderError(
+        `Duitku inquiry gagal [${statusCode}]: ${sanitizeProviderMessage(data.statusMessage)}`,
+        data,
+      );
+    }
+
+    const vaNumber = compactPaymentCode(data.vaNumber ?? data.paymentCode);
+    if (!vaNumber) throw new Error("Duitku response tidak mengandung vaNumber");
+
+    return {
+      provider: "duitku",
+      method: "virtual_account",
+      orderId: request.orderId,
+      gatewayOrderId: request.orderId,
+      ...(typeof data.reference === "string" ? { gatewayTransactionId: data.reference } : {}),
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      bank: request.bank,
+      vaNumber,
+      ...(typeof data.paymentUrl === "string" ? { paymentUrl: data.paymentUrl } : {}),
+      raw: data,
+    };
+  }
+
+  private async createEwalletPayment(
+    request: CreateEwalletPaymentRequest,
+    config: DuitkuConfig,
+  ): Promise<EwalletPaymentResult> {
+    const paymentMethod = DUITKU_EWALLET_METHODS[request.channel];
+    if (!paymentMethod) {
+      throw new Error(`Duitku ${request.channel} e-wallet direct payment is not supported by this adapter yet.`);
+    }
+
+    const data = await this.createInquiry(request, paymentMethod, config);
+    const statusCode = String(data.statusCode ?? "");
+    if (statusCode !== "00") {
+      throw createProviderError(
+        `Duitku inquiry gagal [${statusCode}]: ${sanitizeProviderMessage(data.statusMessage)}`,
+        data,
+      );
+    }
+
+    const paymentUrl = typeof data.appUrl === "string"
+      ? data.appUrl
+      : typeof data.paymentUrl === "string"
+        ? data.paymentUrl
+        : undefined;
+    if (!paymentUrl) throw new Error("Duitku response tidak mengandung paymentUrl atau appUrl");
+
+    return {
+      provider: "duitku",
+      method: "ewallet",
+      orderId: request.orderId,
+      gatewayOrderId: request.orderId,
+      ...(typeof data.reference === "string" ? { gatewayTransactionId: data.reference } : {}),
+      status: "pending",
+      amount: request.amount,
+      currency: "IDR",
+      channel: request.channel,
+      paymentUrl,
+      deeplinkUrl: paymentUrl,
       raw: data,
     };
   }
@@ -187,6 +372,7 @@ export class DuitkuAdapter implements GatewayAdapter {
       orderId,
       status,
       ...(amount !== undefined ? { amount } : {}),
+      provider: "duitku",
       raw: data,
     };
   }
@@ -229,10 +415,16 @@ export class DuitkuAdapter implements GatewayAdapter {
 
     const statusCode = String(raw.resultCode ?? raw.statusCode ?? "01");
     const amount = parseAmount(raw.amount);
+    const paymentCode = typeof raw.paymentCode === "string" ? raw.paymentCode : undefined;
+    const bank = normalizeDuitkuVaBank(paymentCode);
+    const channel = normalizeDuitkuEwalletChannel(paymentCode);
+    const isQris = Boolean(raw.issuerCode) || ["SP", "NQ", "GQ", "SQ"].includes(paymentCode ?? "");
+    const vaNumber = bank ? compactPaymentCode(raw.vaNumber ?? raw.paymentNumber) : undefined;
 
     const providerMeta: Record<string, unknown> = {};
     if (typeof raw.reference === "string") providerMeta.reference = raw.reference;
     if (typeof raw.paymentCode === "string") providerMeta.paymentCode = raw.paymentCode;
+    if (typeof raw.publisherOrderId === "string") providerMeta.publisherOrderId = raw.publisherOrderId;
     if (typeof raw.issuerCode === "string") providerMeta.issuerCode = raw.issuerCode;
     if (typeof raw.settlementDate === "string") providerMeta.settlementDate = raw.settlementDate;
 
@@ -241,6 +433,16 @@ export class DuitkuAdapter implements GatewayAdapter {
       orderId: String(raw.merchantOrderId ?? ""),
       status: CALLBACK_STATUS_MAP[statusCode] ?? "pending",
       ...(amount !== undefined ? { amount } : {}),
+      provider: "duitku",
+      ...(typeof raw.reference === "string" ? { gatewayTransactionId: raw.reference } : {}),
+      ...(bank
+        ? { method: "virtual_account" as const, bank }
+        : channel
+          ? { method: "ewallet" as const, channel }
+          : isQris
+            ? { method: "qris" as const }
+            : {}),
+      ...(vaNumber ? { vaNumber } : {}),
       ...(Object.keys(providerMeta).length > 0 ? { providerMeta } : {}),
       raw: payload,
     };

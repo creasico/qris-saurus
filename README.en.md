@@ -29,6 +29,7 @@ English | [Bahasa Indonesia](./README.md)
 - [Full Examples](#full-examples)
 - [Error handling](#error-handling)
 - [Gateway & Custom Providers](#gateway--custom-providers)
+- [Multi-method Gateway Payments](#multi-method-gateway-payments)
 - [CLI](#cli)
 - [Documentation](#documentation)
 
@@ -479,6 +480,40 @@ gateway.configure({
   apiKey: "secret" 
 } as any); // custom provider not yet in GatewayConfig type
 ```
+
+## Multi-method Gateway Payments
+
+Beyond the legacy QRIS gateway API (`charge()` / `createDynamicQr()`), `qris-saurus` now has a multi-method foundation:
+
+- `gateway.capabilities()` reads provider-supported payment methods.
+- `gateway.createPayment()` handles direct API/custom UI payments (`qris`, `virtual_account`, `ewallet`).
+- Typed helpers: `createQrisPayment()`, `createVirtualAccount()`, `createEwallet()`.
+- `gateway.createCheckout()` / `gateway.createHostedCheckout()` handles provider-hosted checkout/payment pages.
+- Built-in direct method coverage: Midtrans VA/GoPay/ShopeePay, Xendit VA/e-wallet, Duitku VA/e-wallet, and DOKU VA/DANA/ShopeePay.
+- Webhooks remain the source of truth; redirects and polling are UX/fallback only.
+
+```ts
+gateway.configure({
+  provider: "midtrans",
+  serverKey: process.env.MIDTRANS_SERVER_KEY!,
+  sandbox: true,
+});
+
+const va = await gateway.createVirtualAccount({
+  orderId: "INV-VA-001",
+  amount: 50_000,
+  bank: "bca",
+});
+
+const checkout = await gateway.createCheckout({
+  orderId: "INV-CO-001",
+  amount: 75_000,
+  enabledMethods: ["qris", "virtual_account", "ewallet"],
+  notificationUrl: "https://merchant.example/webhooks/midtrans",
+});
+```
+
+See [docs/en/sdk/payments.md](./docs/en/sdk/payments.md) for direct payment vs hosted checkout details, provider capabilities, and webhook best practices.
 
 ## CLI
 

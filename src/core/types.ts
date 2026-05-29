@@ -49,5 +49,19 @@ export interface PaymentStatusResult {
   status: PaymentStatusCode;
   amount?: number;
   paidAt?: Date;
+  /** Provider name when the status is returned by a gateway adapter. */
+  provider?: string;
+  /** Provider transaction id when available. */
+  gatewayTransactionId?: string;
+  /** Normalized payment method when the provider includes it in status/webhook payloads. */
+  method?: "qris" | "virtual_account" | "ewallet" | "payment_link";
+  /** Virtual account bank when method is virtual_account. */
+  bank?: "bca" | "bni" | "bri" | "mandiri" | "permata" | "cimb";
+  /** E-wallet channel when method is ewallet. */
+  channel?: "gopay" | "shopeepay" | "ovo" | "dana" | "linkaja";
+  /** Virtual account number when available from status/webhook. */
+  vaNumber?: string;
+  /** Payment/deeplink URL when available from status/webhook. */
+  paymentUrl?: string;
   raw: unknown;
 }

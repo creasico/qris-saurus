@@ -1,13 +1,110 @@
 import type { PaymentStatusCode, PaymentStatusResult } from "../../core/types";
 import type { GatewayAdapter } from "./adapter";
 import { pollUntilSettled, type PollOptions } from "./poller";
-import type { ApiQrCreateOptions, ApiQrResult, WebhookResult, XenditConfig } from "./types";
+import type {
+  ApiQrCreateOptions,
+  ApiQrResult,
+  CheckoutResult,
+  CreateCheckoutRequest,
+  CreateEwalletPaymentRequest,
+  CreatePaymentRequest,
+  CreateVirtualAccountPaymentRequest,
+  EwalletChannel,
+  EwalletPaymentResult,
+  PaymentResult,
+  ProviderCapabilities,
+  VirtualAccountBank,
+  VirtualAccountPaymentResult,
+  WebhookResult,
+  XenditConfig,
+} from "./types";
 
 const BASE_URL = "https://api.xendit.co";
+
+const XENDIT_VA_BANK_CHANNELS: Partial<Record<VirtualAccountBank, string>> = {
+  bca: "BCA",
+  bni: "BNI",
+  bri: "BRI",
+  mandiri: "MANDIRI",
+  permata: "PERMATA",
+};
+const XENDIT_EWALLET_CHANNELS: Partial<Record<EwalletChannel, string>> = {
+  ovo: "ID_OVO",
+  dana: "ID_DANA",
+  linkaja: "ID_LINKAJA",
+  shopeepay: "ID_SHOPEEPAY",
+};
+const XENDIT_CAPABILITIES: ProviderCapabilities = {
+  qris: true,
+  virtualAccount: { banks: ["bca", "bni", "bri", "mandiri", "permata"] },
+  ewallet: { channels: ["ovo", "dana", "linkaja", "shopeepay"] },
+  hostedCheckout: true,
+};
+
+function mapXenditInvoiceMethods(methods: CreateCheckoutRequest["enabledMethods"]): string[] | undefined {
+  if (!methods?.length) return undefined;
+  const mapped = new Set<string>();
+  for (const method of methods) {
+    if (method === "qris") mapped.add("QRIS");
+    if (method === "virtual_account") {
+      for (const bank of ["BCA", "BNI", "BRI", "MANDIRI", "PERMATA"]) mapped.add(bank);
+    }
+    if (method === "ewallet") {
+      for (const channel of ["OVO", "DANA", "LINKAJA", "SHOPEEPAY"]) mapped.add(channel);
+    }
+  }
+  return mapped.size > 0 ? Array.from(mapped) : undefined;
+}
+
+function invoiceDurationSeconds(expiresAt: Date | undefined): number | undefined {
+  if (!expiresAt) return undefined;
+  return Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+}
+
+function compactPaymentCode(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.replace(/\s+/g, "");
+  return compact.length > 0 ? compact : undefined;
+}
+
+function normalizeXenditVaBank(code: unknown): VirtualAccountBank | undefined {
+  if (typeof code !== "string") return undefined;
+  const upper = code.toUpperCase();
+  const entry = Object.entries(XENDIT_VA_BANK_CHANNELS).find(([, channel]) => channel === upper);
+  return entry?.[0] as VirtualAccountBank | undefined;
+}
+
+function normalizeXenditEwalletChannel(code: unknown): EwalletChannel | undefined {
+  if (typeof code !== "string") return undefined;
+  const upper = code.toUpperCase();
+  const entry = Object.entries(XENDIT_EWALLET_CHANNELS).find(([, channel]) => channel === upper);
+  return entry?.[0] as EwalletChannel | undefined;
+}
+
+function xenditStatus(value: unknown): PaymentStatusCode {
+  const status = String(value ?? "").toUpperCase();
+  if (["PAID", "SUCCEEDED", "COMPLETED", "SUCCESS", "SETTLED"].includes(status)) return "paid";
+  if (["EXPIRED"].includes(status)) return "expired";
+  if (["FAILED"].includes(status)) return "failed";
+  if (["VOIDED", "CANCELLED", "CANCELED", "INACTIVE"].includes(status)) return "cancelled";
+  return "pending";
+}
 
 export class XenditAdapter implements GatewayAdapter {
   private authHeader(secretKey: string): string {
     return "Basic " + btoa(secretKey + ":");
+  }
+
+  private jsonHeaders(config: XenditConfig): Record<string, string> {
+    return {
+      Authorization: this.authHeader(config.secretKey),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+  }
+
+  capabilities(): ProviderCapabilities {
+    return XENDIT_CAPABILITIES;
   }
 
   private async request<T>(
@@ -46,11 +143,7 @@ export class XenditAdapter implements GatewayAdapter {
       `${BASE_URL}/qr_codes`,
       {
         method: "POST",
-        headers: {
-          Authorization: this.authHeader(config.secretKey),
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: this.jsonHeaders(config),
         body: JSON.stringify({
           reference_id: options.orderId,
           type: "DYNAMIC",
@@ -73,6 +166,177 @@ export class XenditAdapter implements GatewayAdapter {
       qrisString,
       gatewayOrderId: String(data.id ?? options.orderId),
       ...(expiresAt !== undefined && { expiresAt }),
+      raw: data,
+    };
+  }
+
+  async createPayment(request: CreatePaymentRequest, config: XenditConfig): Promise<PaymentResult> {
+    if (request.method === "qris") {
+      const qr = await this.createDynamicQr(
+        {
+          orderId: request.orderId,
+          amount: request.amount,
+          ...(request.description ? { description: request.description } : {}),
+          ...(request.customerEmail ? { customerEmail: request.customerEmail } : {}),
+        },
+        config,
+      );
+
+      return {
+        provider: "xendit",
+        method: "qris",
+        orderId: request.orderId,
+        gatewayOrderId: qr.gatewayOrderId,
+        status: "pending",
+        amount: request.amount,
+        currency: "IDR",
+        ...(qr.expiresAt ? { expiresAt: qr.expiresAt } : {}),
+        qrisString: qr.qrisString,
+        ...(qr.qrImageUrl ? { qrImageUrl: qr.qrImageUrl } : {}),
+        ...(qr.gatewayTransactionId ? { gatewayTransactionId: qr.gatewayTransactionId } : {}),
+        raw: qr.raw,
+      };
+    }
+
+    if (request.method === "virtual_account") {
+      return this.createVirtualAccountPayment(request, config);
+    }
+
+    if (request.method === "ewallet") {
+      return this.createEwalletPayment(request, config);
+    }
+
+    throw new Error(`Xendit ${request.method} direct payment is not supported by this adapter yet.`);
+  }
+
+  private async createVirtualAccountPayment(
+    request: CreateVirtualAccountPaymentRequest,
+    config: XenditConfig,
+  ): Promise<VirtualAccountPaymentResult> {
+    const bankCode = XENDIT_VA_BANK_CHANNELS[request.bank];
+    if (!bankCode) {
+      throw new Error(`Xendit ${request.bank} virtual account direct payment is not supported by this adapter yet.`);
+    }
+
+    const data = await this.request<Record<string, unknown>>(`${BASE_URL}/callback_virtual_accounts`, {
+      method: "POST",
+      headers: this.jsonHeaders(config),
+      body: JSON.stringify({
+        external_id: request.orderId,
+        bank_code: bankCode,
+        name: request.customerName ?? "Customer",
+        is_closed: true,
+        expected_amount: request.amount,
+        currency: "IDR",
+        ...(request.expiresAt ? { expiration_date: request.expiresAt.toISOString() } : {}),
+        ...(request.vaNumber ? { virtual_account_number: request.vaNumber } : {}),
+        ...(request.description ? { description: request.description } : {}),
+      }),
+    });
+
+    const vaNumber = compactPaymentCode(data.account_number ?? data.virtual_account_number);
+    if (!vaNumber) throw new Error("Xendit response tidak mengandung account_number");
+    const expiresAt = typeof data.expiration_date === "string" ? new Date(data.expiration_date) : undefined;
+
+    return {
+      provider: "xendit",
+      method: "virtual_account",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.id ?? request.orderId),
+      status: xenditStatus(data.status),
+      amount: request.amount,
+      currency: "IDR",
+      bank: request.bank,
+      vaNumber,
+      ...(expiresAt ? { expiresAt } : {}),
+      raw: data,
+    };
+  }
+
+  private async createEwalletPayment(
+    request: CreateEwalletPaymentRequest,
+    config: XenditConfig,
+  ): Promise<EwalletPaymentResult> {
+    const channelCode = XENDIT_EWALLET_CHANNELS[request.channel];
+    if (!channelCode) {
+      throw new Error(`Xendit ${request.channel} e-wallet direct payment is not supported by this adapter yet.`);
+    }
+    const channelProperties: Record<string, unknown> = {};
+    if (request.channel === "ovo") {
+      if (!request.customerPhone) throw new Error("Xendit OVO e-wallet payments require customerPhone.");
+      channelProperties.mobile_number = request.customerPhone;
+    }
+    if (request.channel !== "ovo") {
+      const redirectUrl = request.returnUrl ?? request.callbackUrl;
+      if (!redirectUrl) {
+        throw new Error("Xendit redirect-based e-wallet payments require returnUrl or callbackUrl.");
+      }
+      channelProperties.success_redirect_url = redirectUrl;
+      channelProperties.failure_redirect_url = redirectUrl;
+    }
+
+    const data = await this.request<Record<string, unknown>>(`${BASE_URL}/ewallets/charges`, {
+      method: "POST",
+      headers: this.jsonHeaders(config),
+      body: JSON.stringify({
+        reference_id: request.orderId,
+        currency: "IDR",
+        amount: request.amount,
+        checkout_method: "ONE_TIME_PAYMENT",
+        channel_code: channelCode,
+        ...(Object.keys(channelProperties).length > 0 ? { channel_properties: channelProperties } : {}),
+        ...(request.metadata ? { metadata: request.metadata } : {}),
+      }),
+    });
+
+    const actions = Array.isArray(data.actions) ? data.actions as Record<string, unknown>[] : [];
+    const redirectAction = actions.find((action) => typeof action.url === "string");
+    const paymentUrl = typeof redirectAction?.url === "string" ? redirectAction.url : undefined;
+
+    return {
+      provider: "xendit",
+      method: "ewallet",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.id ?? request.orderId),
+      status: xenditStatus(data.status),
+      amount: request.amount,
+      currency: "IDR",
+      channel: request.channel,
+      ...(paymentUrl ? { paymentUrl, deeplinkUrl: paymentUrl } : {}),
+      raw: data,
+    };
+  }
+
+  async createCheckout(request: CreateCheckoutRequest, config: XenditConfig): Promise<CheckoutResult> {
+    const invoiceDuration = invoiceDurationSeconds(request.expiresAt);
+    const paymentMethods = mapXenditInvoiceMethods(request.enabledMethods);
+    const data = await this.request<Record<string, unknown>>(`${BASE_URL}/v2/invoices`, {
+      method: "POST",
+      headers: this.jsonHeaders(config),
+      body: JSON.stringify({
+        external_id: request.orderId,
+        amount: request.amount,
+        currency: "IDR",
+        description: request.description ?? `Payment ${request.orderId}`,
+        ...(request.customerEmail ? { payer_email: request.customerEmail } : {}),
+        ...(invoiceDuration ? { invoice_duration: invoiceDuration } : {}),
+        ...(request.returnUrl ? { success_redirect_url: request.returnUrl } : {}),
+        ...(paymentMethods ? { payment_methods: paymentMethods } : {}),
+      }),
+    });
+
+    const checkoutUrl = typeof data.invoice_url === "string" ? data.invoice_url : null;
+    if (!checkoutUrl) {
+      throw new Error("Xendit invoice response tidak mengandung invoice_url");
+    }
+
+    const expiresAt = typeof data.expiry_date === "string" ? new Date(data.expiry_date) : undefined;
+    return {
+      provider: "xendit",
+      orderId: request.orderId,
+      gatewayOrderId: String(data.id ?? request.orderId),
+      checkoutUrl,
+      ...(expiresAt ? { expiresAt } : {}),
       raw: data,
     };
   }
@@ -123,6 +387,8 @@ export class XenditAdapter implements GatewayAdapter {
         status: "paid",
         ...(amount !== undefined && { amount }),
         ...(paidAt !== undefined && { paidAt }),
+        provider: "xendit",
+        method: "qris",
         raw: data,
       };
     }
@@ -189,14 +455,13 @@ export class XenditAdapter implements GatewayAdapter {
     const raw = payload as Record<string, unknown>;
     const data = (raw.data ?? raw) as Record<string, unknown>;
 
-    const orderId = String(data.reference_id ?? data.id ?? "");
+    const eventType = String(raw.event ?? "").toLowerCase();
+    const orderId = String(data.reference_id ?? data.external_id ?? data.id ?? "");
     if (!orderId) {
-      throw new Error("Xendit webhook error: reference_id and id are both missing from data");
+      throw new Error("Xendit webhook error: reference_id, external_id, and id are missing from data");
     }
 
-    const eventType = String(raw.event ?? "").toLowerCase();
-
-    let status: PaymentStatusCode = "pending";
+    let status: PaymentStatusCode = xenditStatus(data.status);
     const qrStatus = String(data.status ?? "").toUpperCase();
     const expiresAt = typeof data.expires_at === "string" ? new Date(data.expires_at) : null;
 
@@ -204,11 +469,18 @@ export class XenditAdapter implements GatewayAdapter {
       status = "paid";
     } else if (qrStatus === "INACTIVE") {
       status = expiresAt && expiresAt < new Date() ? "expired" : "cancelled";
-    } else if (qrStatus === "EXPIRED") {
-      status = "expired";
     }
 
-    const amount = typeof data.amount === "number" ? data.amount : undefined;
+    const amount = typeof data.amount === "number"
+      ? data.amount
+      : typeof data.charge_amount === "number"
+        ? data.charge_amount
+        : typeof data.expected_amount === "number"
+          ? data.expected_amount
+          : undefined;
+    const bank = normalizeXenditVaBank(data.bank_code);
+    const channel = normalizeXenditEwalletChannel(data.channel_code);
+    const vaNumber = compactPaymentCode(data.account_number ?? data.virtual_account_number);
 
     let paidAt: Date | undefined;
     if (status === "paid") {
@@ -218,6 +490,10 @@ export class XenditAdapter implements GatewayAdapter {
       );
       if (successfulPayment && typeof successfulPayment.created === "string") {
         paidAt = new Date(successfulPayment.created);
+      } else if (typeof data.created === "string") {
+        paidAt = new Date(data.created);
+      } else if (typeof data.updated === "string") {
+        paidAt = new Date(data.updated);
       }
     }
 
@@ -227,6 +503,12 @@ export class XenditAdapter implements GatewayAdapter {
       status,
       ...(amount !== undefined && { amount }),
       ...(paidAt !== undefined && { paidAt }),
+      provider: "xendit",
+      ...(typeof data.id === "string" ? { gatewayTransactionId: data.id } : {}),
+      ...(bank ? { method: "virtual_account" as const, bank } : {}),
+      ...(channel ? { method: "ewallet" as const, channel } : {}),
+      ...(!bank && !channel ? { method: "qris" as const } : {}),
+      ...(vaNumber ? { vaNumber } : {}),
       raw: payload,
     };
   }

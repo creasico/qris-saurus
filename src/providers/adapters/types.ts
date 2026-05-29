@@ -30,6 +30,10 @@ export interface DokuConfig {
   merchantId: string;
   /** QRIS terminal ID registered in DOKU. */
   terminalId: string;
+  /** DOKU Virtual Account partner service ID / company code (BIN), left-padded by the adapter. */
+  virtualAccountPartnerServiceId?: string;
+  /** Enable reusable DOKU VA payment code. Default follows DOKU behavior (false). */
+  virtualAccountReusableStatus?: boolean;
   /** Gunakan sandbox endpoint. Default: false */
   sandbox?: boolean;
   /** SNAP channel ID for QRIS. Default: H2H */
@@ -63,6 +67,149 @@ export interface DuitkuConfig {
   expiryPeriod?: number;
   additionalParam?: string;
   merchantUserInfo?: string;
+}
+
+export type PaymentMethod = "qris" | "virtual_account" | "ewallet" | "payment_link";
+
+export type VirtualAccountBank =
+  | "bca"
+  | "bni"
+  | "bri"
+  | "mandiri"
+  | "permata"
+  | "cimb";
+
+export type EwalletChannel = "gopay" | "shopeepay" | "ovo" | "dana" | "linkaja";
+
+export interface ProviderCapabilities {
+  qris?: boolean;
+  virtualAccount?: {
+    banks: VirtualAccountBank[];
+  };
+  ewallet?: {
+    channels: EwalletChannel[];
+  };
+  paymentLink?: boolean;
+  hostedCheckout?: boolean;
+}
+
+interface BasePaymentRequest {
+  orderId: string;
+  amount: number;
+  currency?: "IDR";
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  description?: string;
+  expiresAt?: Date;
+  metadata?: Record<string, unknown>;
+  /** Override webhook notification URL for this transaction if the provider supports it. */
+  notificationUrl?: string;
+  /** Redirect URL after payment if the provider supports it. */
+  returnUrl?: string;
+  /** Callback URL used by app-switching e-wallet flows if the provider supports it. */
+  callbackUrl?: string;
+}
+
+export interface CreateQrisPaymentRequest extends BasePaymentRequest {
+  method: "qris";
+}
+
+export interface CreateVirtualAccountPaymentRequest extends BasePaymentRequest {
+  method: "virtual_account";
+  bank: VirtualAccountBank;
+  /** Optional custom virtual account number for providers that support it. */
+  vaNumber?: string;
+}
+
+export interface CreateEwalletPaymentRequest extends BasePaymentRequest {
+  method: "ewallet";
+  channel: EwalletChannel;
+}
+
+export interface CreatePaymentLinkRequest extends BasePaymentRequest {
+  method: "payment_link";
+  enabledMethods?: PaymentMethod[];
+}
+
+export type CreatePaymentRequest =
+  | CreateQrisPaymentRequest
+  | CreateVirtualAccountPaymentRequest
+  | CreateEwalletPaymentRequest
+  | CreatePaymentLinkRequest;
+
+export interface BasePaymentResult {
+  provider: string;
+  method: PaymentMethod;
+  orderId: string;
+  gatewayOrderId: string;
+  gatewayTransactionId?: string;
+  status: PaymentStatusCode;
+  amount: number;
+  currency: "IDR";
+  expiresAt?: Date;
+  paymentUrl?: string;
+  raw: unknown;
+}
+
+export interface QrisPaymentResult extends BasePaymentResult {
+  method: "qris";
+  qrisString?: string;
+  qrImageUrl?: string;
+  qrImageUrlV2?: string;
+  acquirer?: string;
+}
+
+export interface VirtualAccountPaymentResult extends BasePaymentResult {
+  method: "virtual_account";
+  bank: VirtualAccountBank;
+  vaNumber: string;
+  billKey?: string;
+  billerCode?: string;
+}
+
+export interface EwalletPaymentResult extends BasePaymentResult {
+  method: "ewallet";
+  channel: EwalletChannel;
+  deeplinkUrl?: string;
+  qrString?: string;
+  qrImageUrl?: string;
+}
+
+export interface PaymentLinkResult extends BasePaymentResult {
+  method: "payment_link";
+  paymentUrl: string;
+}
+
+export type PaymentResult =
+  | QrisPaymentResult
+  | VirtualAccountPaymentResult
+  | EwalletPaymentResult
+  | PaymentLinkResult;
+
+export interface CreateCheckoutRequest {
+  orderId: string;
+  amount: number;
+  currency?: "IDR";
+  enabledMethods?: PaymentMethod[];
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  description?: string;
+  expiresAt?: Date;
+  metadata?: Record<string, unknown>;
+  notificationUrl?: string;
+  returnUrl?: string;
+}
+
+export interface CheckoutResult {
+  provider: string;
+  orderId: string;
+  gatewayOrderId: string;
+  checkoutUrl: string;
+  token?: string;
+  expiresAt?: Date;
+  raw: unknown;
 }
 
 export interface ApiQrCreateOptions extends DynamicOptions {
@@ -114,6 +261,11 @@ export interface MidtransAction {
   url?: string;
 }
 
+export interface MidtransVaNumber {
+  bank?: string;
+  va_number?: string;
+}
+
 export interface MidtransChargeResponse {
   status_code?: string;
   status_message?: string;
@@ -130,6 +282,10 @@ export interface MidtransChargeResponse {
   qr_string?: string;
   expiry_time?: string;
   actions?: MidtransAction[];
+  va_numbers?: MidtransVaNumber[];
+  permata_va_number?: string;
+  bill_key?: string;
+  biller_code?: string;
   [key: string]: unknown;
 }
 

@@ -202,6 +202,58 @@ describe("xenditAdapter.parseWebhook", () => {
     expect(result.paidAt).toBeInstanceOf(Date);
   });
 
+  test("returns normalized Virtual Account callback metadata", () => {
+    const payload = {
+      event: "callback_virtual_account.paid",
+      data: {
+        id: "va_123",
+        external_id: "INV-XEN-VA-1",
+        status: "PAID",
+        amount: 88000,
+        bank_code: "BCA",
+        account_number: "1234567890",
+        created: "2026-05-07T10:00:00.000Z",
+      },
+    };
+    const result = xenditAdapter.parseWebhook(payload, config, { "x-callback-token": "my-token" });
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "xendit",
+      method: "virtual_account",
+      orderId: "INV-XEN-VA-1",
+      gatewayTransactionId: "va_123",
+      status: "paid",
+      amount: 88000,
+      bank: "bca",
+      vaNumber: "1234567890",
+    });
+  });
+
+  test("returns normalized e-wallet callback metadata", () => {
+    const payload = {
+      event: "ewallet.charge.succeeded",
+      data: {
+        id: "ewc_123",
+        reference_id: "INV-XEN-DANA-1",
+        status: "SUCCEEDED",
+        charge_amount: 66000,
+        channel_code: "ID_DANA",
+        updated: "2026-05-07T10:00:00.000Z",
+      },
+    };
+    const result = xenditAdapter.parseWebhook(payload, config, { "x-callback-token": "my-token" });
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "xendit",
+      method: "ewallet",
+      orderId: "INV-XEN-DANA-1",
+      gatewayTransactionId: "ewc_123",
+      status: "paid",
+      amount: 66000,
+      channel: "dana",
+    });
+  });
+
   test("throws error when callbackToken is missing from config", () => {
     const configNoToken = { secretKey: "xnd_test" } as any;
     const payload = { data: { reference_id: "INV-X02", status: "ACTIVE" } };
@@ -239,6 +291,52 @@ describe("duitkuAdapter.parseWebhook", () => {
     const result = duitkuAdapter.parseWebhook(payload, config);
     expect(result.valid).toBe(true);
     expect(result.status).toBe("failed");
+  });
+
+  test("returns normalized Virtual Account callback metadata", () => {
+    const payload = {
+      ...validPayload,
+      paymentCode: "BC",
+      reference: "DUITKU-VA-REF-1",
+      vaNumber: "7007014001444348",
+      publisherOrderId: "PUB-VA-1",
+    };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "duitku",
+      method: "virtual_account",
+      bank: "bca",
+      orderId: "INV-001",
+      gatewayTransactionId: "DUITKU-VA-REF-1",
+      status: "paid",
+      amount: 75000,
+      vaNumber: "7007014001444348",
+    });
+    expect(result.providerMeta?.paymentCode).toBe("BC");
+  });
+
+  test("returns normalized e-wallet callback metadata", () => {
+    const payload = {
+      ...validPayload,
+      paymentCode: "DA",
+      reference: "DUITKU-DANA-REF-1",
+      publisherOrderId: "PUB-DANA-1",
+    };
+    const result = duitkuAdapter.parseWebhook(payload, config);
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "duitku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-001",
+      gatewayTransactionId: "DUITKU-DANA-REF-1",
+      status: "paid",
+      amount: 75000,
+    });
+    expect(result.providerMeta?.paymentCode).toBe("DA");
   });
 
   test("throws when signature is wrong by default", () => {
@@ -314,6 +412,66 @@ describe("dokuAdapter.parseWebhook", () => {
     const result = dokuAdapter.parseWebhook(cancelledPayload, config, signedHeaders(cancelledPayload), { now });
     expect(result.valid).toBe(true);
     expect(result.status).toBe("cancelled");
+  });
+
+  test("returns normalized Virtual Account payment notification metadata", () => {
+    const vaPayload = {
+      partnerServiceId: "   19008",
+      customerNo: "00000000000000000001",
+      virtualAccountNo: "  19008000000000000000000001",
+      virtualAccountName: "Customer Name",
+      trxId: "INV-DOKU-VA-001",
+      paymentRequestId: "12839218738127830",
+      paidAmount: { value: "11500.00", currency: "IDR" },
+      additionalInfo: { channel: "VIRTUAL_ACCOUNT_BCA" },
+      trxDateTime: "2026-05-07T10:00:05+07:00",
+      virtualAccountTrxType: "C",
+    };
+    const webhookPayload = {
+      virtualAccountData: vaPayload,
+      additionalInfo: { channel: "VIRTUAL_ACCOUNT_BCA" },
+    };
+
+    const result = dokuAdapter.parseWebhook(webhookPayload, config, signedHeaders(webhookPayload), { now });
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "doku",
+      method: "virtual_account",
+      orderId: "INV-DOKU-VA-001",
+      status: "paid",
+      amount: 11500,
+      bank: "bca",
+      vaNumber: "19008000000000000000000001",
+    });
+    expect(result.providerMeta?.paymentRequestId).toBe("12839218738127830");
+  });
+
+  test("returns normalized E-Wallet payment notification metadata", () => {
+    const ewalletPayload = {
+      originalPartnerReferenceNo: "INV-DOKU-DANA-001",
+      originalReferenceNo: "DOKU-DANA-REF-1",
+      serviceCode: "55",
+      latestTransactionStatus: "00",
+      transactionStatusDesc: "SUCCESS",
+      transAmount: { value: "75000.00", currency: "IDR" },
+      paidTime: "2026-05-07T10:00:05+07:00",
+      additionalInfo: { acquirer: { id: "EMONEY_DANA_SNAP" } },
+    };
+
+    const result = dokuAdapter.parseWebhook(ewalletPayload, config, signedHeaders(ewalletPayload), { now });
+
+    expect(result).toMatchObject({
+      valid: true,
+      provider: "doku",
+      method: "ewallet",
+      channel: "dana",
+      orderId: "INV-DOKU-DANA-001",
+      gatewayTransactionId: "DOKU-DANA-REF-1",
+      status: "paid",
+      amount: 75000,
+    });
+    expect(result.providerMeta?.channel).toBe("EMONEY_DANA_SNAP");
   });
 
   test("accepts signatures computed from the raw request body", () => {
